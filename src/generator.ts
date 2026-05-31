@@ -140,6 +140,82 @@ function overlaps(a: Rect, b: Rect, gap: number) {
   return a.x < b.x + b.w + gap && a.x + a.w + gap > b.x && a.y < b.y + b.h + gap && a.y + a.h + gap > b.y;
 }
 
+function transformedTextValue(element: TextElement) {
+  if (element.transform === "uppercase") return element.text.toUpperCase();
+  if (element.transform === "lowercase") return element.text.toLowerCase();
+  return element.text;
+}
+
+function estimateTextLineWidth(line: string, element: TextElement) {
+  const family = element.fontFamily.toLowerCase();
+  const baseFactor = family.includes("mono") ? 0.62 : family.includes("condensed") ? 0.54 : family.includes("wide") || family.includes("black") ? 0.76 : 0.66;
+  const glyphWidth = Array.from(line).reduce((total, char) => {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const factor = /\s/.test(char) ? 0.35 : codePoint > 255 ? 0.95 : /[.,:;|/\\-]/.test(char) ? 0.4 : baseFactor;
+    return total + element.fontSize * factor;
+  }, 0);
+  return glyphWidth + Math.max(0, line.length - 1) * element.letterSpacing;
+}
+
+function baseElementRect(element: GraphicElement): Rect {
+  if (element.kind !== "text") {
+    return { x: element.x, y: element.y, w: element.width, h: element.height };
+  }
+  const lines = transformedTextValue(element).split("\n");
+  const w = Math.max(element.width, ...lines.map((line) => estimateTextLineWidth(line, element)));
+  const h = Math.max(element.height, lines.length * element.fontSize * element.lineHeight);
+  return { x: element.x, y: element.y, w, h };
+}
+
+function elementRect(element: GraphicElement): Rect {
+  const baseRect = baseElementRect(element);
+  const rotation = ((element.rotation % 360) + 360) % 360;
+  if (rotation === 0) {
+    return baseRect;
+  }
+  const radians = rotation * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const origin = { x: element.x + element.width / 2, y: element.y + element.height / 2 };
+  const corners = [
+    { x: baseRect.x, y: baseRect.y },
+    { x: baseRect.x + baseRect.w, y: baseRect.y },
+    { x: baseRect.x + baseRect.w, y: baseRect.y + baseRect.h },
+    { x: baseRect.x, y: baseRect.y + baseRect.h }
+  ].map((point) => ({
+    x: origin.x + (point.x - origin.x) * cos - (point.y - origin.y) * sin,
+    y: origin.y + (point.x - origin.x) * sin + (point.y - origin.y) * cos
+  }));
+  const xs = corners.map((point) => point.x);
+  const ys = corners.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  return {
+    x: left,
+    y: top,
+    w: Math.max(...xs) - left,
+    h: Math.max(...ys) - top
+  };
+}
+
+function rotatedSlotSize(width: number, height: number, rotation: number) {
+  const rotationValue = ((rotation % 360) + 360) % 360;
+  if (rotationValue === 0 || rotationValue === 180) {
+    return { width, height, offsetX: 0, offsetY: 0 };
+  }
+  const radians = rotationValue * Math.PI / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const rotatedWidth = width * cos + height * sin;
+  const rotatedHeight = width * sin + height * cos;
+  return {
+    width: rotatedWidth,
+    height: rotatedHeight,
+    offsetX: (rotatedWidth - width) / 2,
+    offsetY: (rotatedHeight - height) / 2
+  };
+}
+
 interface Rect {
   x: number;
   y: number;
@@ -147,7 +223,7 @@ interface Rect {
   h: number;
 }
 
-function randomSlot(rng: Rng, canvas: CanvasSettings, width: number, height: number, occupied: Rect[], loose = false): Rect {
+function randomSlot(rng: Rng, canvas: CanvasSettings, width: number, height: number, occupied: Rect[], loose = false, strict = false): Rect | null {
   const grid = canvas.gridSize || 8;
   const gap = loose ? 0 : pick(rng, [8, 8, 16, 24]);
   const maxX = Math.max(canvas.padding, canvas.width - canvas.padding - width);
@@ -164,6 +240,7 @@ function randomSlot(rng: Rng, canvas: CanvasSettings, width: number, height: num
       return rect;
     }
   }
+  if (strict) return null;
   const rect = {
     x: Math.round(between(rng, canvas.padding, maxX) / grid) * grid,
     y: Math.round(between(rng, canvas.padding, maxY) / grid) * grid,
@@ -181,13 +258,14 @@ function paletteFor(seed: string, canvas: CanvasSettings) {
   return palette;
 }
 
-function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settings?: Partial<Project["generator"]>): { type: Array<() => GraphicElement>; nonType: Array<() => GraphicElement> } {
+function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settings?: Partial<Project["generator"]>): { type: Array<() => GraphicElement | null>; nonType: Array<() => GraphicElement | null> } {
   const m = metadata(rng);
   const palette = paletteFor(seed, canvas);
   const occupied: Rect[] = [];
   const rotations = rotationOptions(settings?.allow45Rotation ?? true);
   const nonTypeStrokeWidth = normalizeStrokeWidth(settings?.nonTypeStrokeWidth ?? 1.5);
-  const makeSlot = (w: number, h: number, loose = false) => randomSlot(rng, canvas, w, h, occupied, loose);
+  const preventOverlap = settings?.preventOverlap ?? false;
+  const makeSlot = (w: number, h: number, loose = false) => randomSlot(rng, canvas, w, h, occupied, loose, preventOverlap);
   const label = () => pick(rng, ["NX", "FC", "RU", "TC", "SA", "Q", "VX", "K"]);
   const glyphs = ["⏚", "⎓", "⏻", "⌁", "⌖", "⌬", "◆", "◇", "□", "▣", "▲", "△", "●", "○", "※", "№", "Ω", "µ", "±", "↯"];
   const textLines = [
@@ -245,34 +323,44 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
     const w = pick(rng, [96, 128, 160, 208, 264, 336, 416]);
     const fs = pick(rng, [8, 9, 10, 12, 14, 18, 24, 30]);
     const h = Math.max(14, Math.ceil(fs * pick(rng, [1.2, 1.6, 2.2])));
-    const slot = makeSlot(w, h);
     const value = textQueue[i % textQueue.length];
     const role = pick(rng, ["normal", "mono", "wide", "condensed"] as FontRole[]);
-    const el = role === "mono" ? mono(rng, `Data / ${value.slice(0, 16)}`, value, slot.x, slot.y, w, h, fs, pick(rng, [500, 600, 700])) : text(rng, `Text / ${value.slice(0, 16)}`, value, slot.x, slot.y, w, h, fs, pick(rng, [600, 700, 800, 900]), role);
+    const el = role === "mono" ? mono(rng, `Data / ${value.slice(0, 16)}`, value, 0, 0, w, h, fs, pick(rng, [500, 600, 700])) : text(rng, `Text / ${value.slice(0, 16)}`, value, 0, 0, w, h, fs, pick(rng, [600, 700, 800, 900]), role);
     el.fill = pick(rng, [palette.fg, palette.fg, palette.muted]);
     el.stroke = "none";
     el.strokeWidth = 0;
+    const bounds = preventOverlap ? elementRect(el) : { w, h };
+    const slot = makeSlot(bounds.w, bounds.h);
+    if (!slot) return null;
+    el.x = slot.x;
+    el.y = slot.y;
     return el;
   };
 
   const shapeFactory = (kind: ShapeKind) => () => {
     const w = pick(rng, [32, 48, 64, 96, 128, 176, 240]);
     const h = kind === "barcode" ? pick(rng, [36, 48, 72, 96]) : pick(rng, [16, 24, 32, 48, 64, 96, 144]);
-    const slot = makeSlot(w, Math.max(1, h));
-    const el = shape(rng, kind, `${kind} component`, slot.x, slot.y, w, Math.max(1, h), kind === "rect" || kind === "pill" || kind === "grid" ? "none" : palette.fg, pick(rng, [palette.fg, palette.fg, palette.muted]));
+    const rotation = pick(rng, rotations);
+    const slotSize = preventOverlap ? rotatedSlotSize(w, Math.max(1, h), rotation) : { width: w, height: Math.max(1, h), offsetX: 0, offsetY: 0 };
+    const slot = makeSlot(slotSize.width, slotSize.height);
+    if (!slot) return null;
+    const el = shape(rng, kind, `${kind} component`, slot.x + slotSize.offsetX, slot.y + slotSize.offsetY, w, Math.max(1, h), kind === "rect" || kind === "pill" || kind === "grid" ? "none" : palette.fg, pick(rng, [palette.fg, palette.fg, palette.muted]));
     el.strokeWidth = nonTypeStrokeWidth;
-    el.rotation = pick(rng, rotations);
+    el.rotation = rotation;
     return el;
   };
 
   const iconFactory = (kind: IconKind) => () => {
     const size = pick(rng, [20, 24, 28, 32, 40, 48, 56, 72, 88]);
-    const slot = makeSlot(size, size);
-    const el = icon(rng, kind, `${kind} mark`, slot.x, slot.y, size, kind === "cert" || kind === "stamp" || kind === "logo" ? label() : kind === "glyph" ? pick(rng, glyphs) : undefined);
+    const rotation = pick(rng, rotations);
+    const slotSize = preventOverlap ? rotatedSlotSize(size, size, rotation) : { width: size, height: size, offsetX: 0, offsetY: 0 };
+    const slot = makeSlot(slotSize.width, slotSize.height);
+    if (!slot) return null;
+    const el = icon(rng, kind, `${kind} mark`, slot.x + slotSize.offsetX, slot.y + slotSize.offsetY, size, kind === "cert" || kind === "stamp" || kind === "logo" ? label() : kind === "glyph" ? pick(rng, glyphs) : undefined);
     el.fill = palette.fg;
     el.stroke = pick(rng, [palette.fg, palette.fg, palette.muted]);
     el.strokeWidth = nonTypeStrokeWidth;
-    el.rotation = pick(rng, rotations);
+    el.rotation = rotation;
     return el;
   };
 
@@ -363,7 +451,7 @@ function randomComposition(seed: string, template: TemplateId, settings?: Partia
   const selected = [
     ...shuffle(rng, library.type).slice(0, typeCount),
     ...shuffle(rng, library.nonType).slice(0, nonTypeCount)
-  ].map((make) => clampElementToCanvas(make(), canvas));
+  ].map((make) => make()).filter((element): element is GraphicElement => Boolean(element)).map((element) => clampElementToCanvas(element, canvas));
   return { canvas, elements: selected };
 }
 
@@ -415,7 +503,8 @@ export function createProject(seed = "micro-001", template: TemplateId = serialT
       nonTypeStrokeWidth: 1.5,
       textHighlight: false,
       textHighlightColor: "#000000",
-      allow45Rotation: true
+      allow45Rotation: true,
+      preventOverlap: false
     },
     fonts: {
       normal: null,
@@ -435,7 +524,8 @@ export function regenerate(project: Project, seed: string, template = serialTemp
     nonTypeStrokeWidth: project.generator.nonTypeStrokeWidth,
     textHighlight: project.generator.textHighlight,
     textHighlightColor: project.generator.textHighlightColor,
-    allow45Rotation: project.generator.allow45Rotation
+    allow45Rotation: project.generator.allow45Rotation,
+    preventOverlap: project.generator.preventOverlap ?? false
   };
   const built = templates[serialTemplate].build(seed, settings);
   return {
@@ -451,6 +541,7 @@ export function regenerate(project: Project, seed: string, template = serialTemp
 export function makeOverlay(project: Project): GraphicElement[] {
   const rng = createRng(`${project.generator.seed}-overlay`);
   const overlays: GraphicElement[] = [];
+  const occupied = project.generator.preventOverlap ? project.elements.filter((el) => el.visible).map(elementRect) : [];
   for (let i = 0; i < project.generator.overlayCount; i += 1) {
     const seed = `${project.generator.seed}-${i}-${int(rng, 1, 9999)}`;
     const built = templates[serialTemplate].build(seed, project.generator);
@@ -458,7 +549,7 @@ export function makeOverlay(project: Project): GraphicElement[] {
     const dy = between(rng, -project.generator.overlayOffset, project.generator.overlayOffset);
     const rot = pick(rng, rotationOptions(project.generator.allow45Rotation));
     built.elements.forEach((el) => {
-      overlays.push(clampElementToCanvas({
+      const overlay = clampElementToCanvas({
         ...el,
         id: id(`overlay-${i}`, rng),
         name: `Overlay ${i + 1} / ${el.name}`,
@@ -469,7 +560,12 @@ export function makeOverlay(project: Project): GraphicElement[] {
         fill: el.fill === "none" ? "none" : black,
         stroke: el.stroke === "none" ? "none" : black,
         strokeWidth: normalizeStrokeWidth(el.strokeWidth)
-      }, project.canvas));
+      }, project.canvas);
+      const rect = elementRect(overlay);
+      if (!project.generator.preventOverlap || occupied.every((other) => !overlaps(rect, other, 0))) {
+        occupied.push(rect);
+        overlays.push(overlay);
+      }
     });
   }
   return overlays;

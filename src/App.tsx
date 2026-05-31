@@ -69,11 +69,125 @@ function clampElement(element: GraphicElement, project: Project): GraphicElement
 }
 
 function applyElementPatch(element: GraphicElement, patch: Partial<GraphicElement>, project: Project): GraphicElement {
-  return clampElement({ ...element, ...patch } as GraphicElement, project);
+  const patched = clampElement({ ...element, ...patch } as GraphicElement, project);
+  if (project.generator.preventOverlap && elementOverlaps(patched, project, new Set([element.id]))) {
+    return clampElement(element, project);
+  }
+  return patched;
 }
 
 function clampProjectElements(project: Project): Project {
   return { ...project, elements: project.elements.map((element) => clampElement(element, project)) };
+}
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function estimateTextLineWidth(line: string, element: TextElement) {
+  const family = element.fontFamily.toLowerCase();
+  const baseFactor = family.includes("mono") ? 0.62 : family.includes("condensed") ? 0.54 : family.includes("wide") || family.includes("black") ? 0.76 : 0.66;
+  const glyphWidth = Array.from(line).reduce((total, char) => {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const factor = /\s/.test(char) ? 0.35 : codePoint > 255 ? 0.95 : /[.,:;|/\\-]/.test(char) ? 0.4 : baseFactor;
+    return total + element.fontSize * factor;
+  }, 0);
+  return glyphWidth + Math.max(0, line.length - 1) * element.letterSpacing;
+}
+
+function baseElementRect(element: GraphicElement): Rect {
+  if (element.kind !== "text") {
+    return { x: element.x, y: element.y, width: element.width, height: element.height };
+  }
+  const lines = transformedText(element).split("\n");
+  const width = Math.max(element.width, ...lines.map((line) => estimateTextLineWidth(line, element)));
+  const height = Math.max(element.height, lines.length * element.fontSize * element.lineHeight);
+  return { x: element.x, y: element.y, width, height };
+}
+
+function elementRect(element: GraphicElement): Rect {
+  const baseRect = baseElementRect(element);
+  const rotation = ((element.rotation % 360) + 360) % 360;
+  if (rotation === 0) {
+    return baseRect;
+  }
+  const radians = rotation * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const origin = { x: element.x + element.width / 2, y: element.y + element.height / 2 };
+  const corners = [
+    { x: baseRect.x, y: baseRect.y },
+    { x: baseRect.x + baseRect.width, y: baseRect.y },
+    { x: baseRect.x + baseRect.width, y: baseRect.y + baseRect.height },
+    { x: baseRect.x, y: baseRect.y + baseRect.height }
+  ].map((point) => ({
+    x: origin.x + (point.x - origin.x) * cos - (point.y - origin.y) * sin,
+    y: origin.y + (point.x - origin.x) * sin + (point.y - origin.y) * cos
+  }));
+  const xs = corners.map((point) => point.x);
+  const ys = corners.map((point) => point.y);
+  const left = Math.min(...xs);
+  const top = Math.min(...ys);
+  return {
+    x: left,
+    y: top,
+    width: Math.max(...xs) - left,
+    height: Math.max(...ys) - top
+  };
+}
+
+function rectsOverlap(a: Rect, b: Rect) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function elementOverlaps(element: GraphicElement, project: Project, ignoredIds = new Set<string>()) {
+  if (!element.visible) return false;
+  const rect = elementRect(element);
+  return project.elements.some((other) => other.visible && !ignoredIds.has(other.id) && rectsOverlap(rect, elementRect(other)));
+}
+
+function findOpenElementPosition(element: GraphicElement, project: Project, ignoredIds = new Set<string>()): GraphicElement | null {
+  const clamped = clampElement(element, project);
+  if (!elementOverlaps(clamped, project, ignoredIds)) return clamped;
+
+  const grid = Math.max(1, project.canvas.gridSize || 8);
+  const maxX = Math.max(0, project.canvas.width - clamped.width);
+  const maxY = Math.max(0, project.canvas.height - clamped.height);
+  let best: GraphicElement | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let y = 0; y <= maxY; y += grid) {
+    for (let x = 0; x <= maxX; x += grid) {
+      const candidate = { ...clamped, x, y } as GraphicElement;
+      if (elementOverlaps(candidate, project, ignoredIds)) continue;
+      const distance = (x - clamped.x) ** 2 + (y - clamped.y) ** 2;
+      if (distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+  }
+
+  return best;
+}
+
+function resolveProjectOverlaps(project: Project): Project {
+  const clamped = clampProjectElements(project);
+  if (!clamped.generator.preventOverlap) return clamped;
+
+  const placed: GraphicElement[] = [];
+  const elements = clamped.elements.map((element) => {
+    if (!element.visible) return element;
+    const placedProject = { ...clamped, elements: placed };
+    const next = findOpenElementPosition(element, placedProject) ?? element;
+    placed.push(next);
+    return next;
+  });
+
+  return { ...clamped, elements };
 }
 
 function roundedCanvasWidth(width: number, gridSize: number): number {
@@ -82,7 +196,7 @@ function roundedCanvasWidth(width: number, gridSize: number): number {
 }
 
 function cleanProject(project: Project): Project {
-  return clampProjectElements({
+  return resolveProjectOverlaps({
     ...project,
     palette: "blackWhite",
     customPalette: ["#111111", "#ffffff", "#111111"],
@@ -96,7 +210,8 @@ function cleanProject(project: Project): Project {
       template: "serial",
       textHighlight: project.generator?.textHighlight ?? false,
       textHighlightColor: project.generator?.textHighlightColor ?? "#000000",
-      allow45Rotation: project.generator?.allow45Rotation ?? true
+      allow45Rotation: project.generator?.allow45Rotation ?? true,
+      preventOverlap: project.generator?.preventOverlap ?? false
     },
     fonts: {
       normal: project.fonts?.normal ?? null,
@@ -290,8 +405,13 @@ function App() {
     commit((p) => {
       const clones = p.elements
         .filter((el) => p.selectedIds.includes(el.id))
-        .map((el) => clampElement({ ...el, id: `${el.id}-copy-${Date.now()}`, name: `${el.name} copy`, x: el.x + 16, y: el.y + 16, locked: false }, p));
-      return { ...p, elements: [...p.elements, ...(clones as GraphicElement[])], selectedIds: clones.map((el) => el.id) };
+        .map((el) => ({ ...el, id: `${el.id}-copy-${Date.now()}`, name: `${el.name} copy`, x: el.x + 16, y: el.y + 16, locked: false } as GraphicElement))
+        .reduce<GraphicElement[]>((placed, clone) => {
+          const projectWithPlaced = { ...p, elements: [...p.elements, ...placed] };
+          const next = p.generator.preventOverlap ? findOpenElementPosition(clone, projectWithPlaced) : clampElement(clone, p);
+          return next ? [...placed, next] : placed;
+        }, []);
+      return { ...p, elements: [...p.elements, ...clones], selectedIds: clones.map((el) => el.id) };
     });
   }
 
@@ -321,7 +441,10 @@ function App() {
       lineHeight: 1.1,
       transform: "uppercase"
     };
-    commit((p) => ({ ...p, elements: [...p.elements, el], selectedIds: [el.id] }));
+    commit((p) => {
+      const next = p.generator.preventOverlap ? findOpenElementPosition(el, p) : clampElement(el, p);
+      return next ? { ...p, elements: [...p.elements, next], selectedIds: [next.id] } : p;
+    });
   }
 
   function addShape(shape: ShapeElement["shape"]) {
@@ -345,7 +468,10 @@ function App() {
       rows: 4,
       columns: 6
     };
-    commit((p) => ({ ...p, elements: [...p.elements, el], selectedIds: [el.id] }));
+    commit((p) => {
+      const next = p.generator.preventOverlap ? findOpenElementPosition(el, p) : clampElement(el, p);
+      return next ? { ...p, elements: [...p.elements, next], selectedIds: [next.id] } : p;
+    });
   }
 
   function addIcon(icon: IconElement["icon"]) {
@@ -368,7 +494,10 @@ function App() {
       visible: true,
       locked: false
     };
-    commit((p) => ({ ...p, elements: [...p.elements, el], selectedIds: [el.id] }));
+    commit((p) => {
+      const next = p.generator.preventOverlap ? findOpenElementPosition(el, p) : clampElement(el, p);
+      return next ? { ...p, elements: [...p.elements, next], selectedIds: [next.id] } : p;
+    });
   }
 
   function loadProjectJson(event: ChangeEvent<HTMLInputElement>) {
@@ -472,7 +601,7 @@ function App() {
         <Section title="Serial Sticker">
           <div className="mt-2 grid grid-cols-3 gap-2">
             <button className="tool-button" onClick={() => commit((p) => regenerate(p, `${p.generator.seed}-${Date.now()}`))}><Shuffle size={14} />Generate</button>
-            <button className="tool-button" onClick={() => commit((p) => ({ ...p, elements: [...p.elements, ...makeOverlay(p)] }))}><Layers size={14} />Overlay</button>
+            <button className="tool-button" onClick={() => commit((p) => resolveProjectOverlaps({ ...p, elements: [...p.elements, ...makeOverlay(p)] }))}><Layers size={14} />Overlay</button>
             <button className="tool-button" onClick={() => commit(() => cleanProject(createProject("micro-001", "serial")))}><RotateCcw size={14} />Reset</button>
           </div>
           <Field label="Seed" value={project.generator.seed} onChange={(seed) => silent((p) => ({ ...p, generator: { ...p.generator, seed }, humanize: { ...p.humanize, seed } }))} />
@@ -491,9 +620,10 @@ function App() {
           <Toggle label="Text highlight" checked={project.generator.textHighlight ?? false} onChange={(textHighlight) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlight } }))} />
           <ColorField label="Highlight color" value={project.generator.textHighlightColor ?? "#000000"} onChange={(textHighlightColor) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlightColor } }))} />
           <Toggle label="45 degree rotation" checked={project.generator.allow45Rotation ?? true} onChange={(allow45Rotation) => commit((p) => ({ ...p, generator: { ...p.generator, allow45Rotation } }))} />
+          <Toggle label="Prevent overlap" checked={project.generator.preventOverlap ?? false} onChange={(preventOverlap) => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, preventOverlap } }))} />
           <div className="grid grid-cols-2 gap-2">
             <NumberField label="Batch count" value={project.generator.batchCount} onChange={(batchCount) => commit((p) => ({ ...p, generator: { ...p.generator, batchCount } }))} />
-            <button className="tool-button mt-5" onClick={() => commit((p) => clampProjectElements({ ...p, generator: { ...p.generator, seed: `batch-${Date.now()}`, template: "serial" }, elements: Array.from({ length: p.generator.batchCount }, (_, i) => templates.serial.build(`${p.generator.seed}-${i}`, p.generator).elements.map((el) => ({ ...el, id: `${el.id}-batch-${i}`, x: el.x + (i % 3) * 32, y: el.y + Math.floor(i / 3) * 24, opacity: 0.55 }))).flat() as GraphicElement[] }))}>Batch</button>
+            <button className="tool-button mt-5" onClick={() => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, seed: `batch-${Date.now()}`, template: "serial" }, elements: Array.from({ length: p.generator.batchCount }, (_, i) => templates.serial.build(`${p.generator.seed}-${i}`, p.generator).elements.map((el) => ({ ...el, id: `${el.id}-batch-${i}`, x: el.x + (i % 3) * 32, y: el.y + Math.floor(i / 3) * 24, opacity: 0.55 }))).flat() as GraphicElement[] }))}>Batch</button>
           </div>
         </Section>
         <Section title="Humanize">
@@ -788,7 +918,7 @@ function LayerList({ project, commit, select, moveLayer }: { project: Project; c
       <div className="flex-1 overflow-auto p-2">
         {[...project.elements].reverse().map((el) => (
           <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-md border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-black bg-neutral-100" : "border-black bg-white"}`} onClick={() => select(el.id)}>
-            <button className="icon-button" title="Show/hide" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, visible: !item.visible } : item) })); }}>{el.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
+            <button className="icon-button" title="Show/hide" onClick={(event) => { event.stopPropagation(); commit((p) => resolveProjectOverlaps({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, visible: !item.visible } : item) })); }}>{el.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
             <button className="icon-button" title="Lock" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, locked: !item.locked } : item) })); }}>{el.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
             <span className="truncate">{el.name}</span>
             <button className="icon-button" title="Move up" onClick={(event) => { event.stopPropagation(); moveLayer(el.id, 1); }}><ArrowUp size={13} /></button>

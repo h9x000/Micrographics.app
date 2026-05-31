@@ -179,6 +179,7 @@ export interface GeneratorSettings {
   textHighlight: boolean;
   textHighlightColor: string;
   allow45Rotation: boolean;
+  preventOverlap: boolean;
 }
 
 export type TemplateId =
