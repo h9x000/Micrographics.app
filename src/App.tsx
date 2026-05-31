@@ -21,7 +21,7 @@ import {
   ZoomIn,
   ZoomOut
 } from "lucide-react";
-import React, { ChangeEvent, PointerEvent, forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import React, { ChangeEvent, PointerEvent, forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Input, Textarea, Checkbox, SelectControl, SliderControl } from "./components/ui/form";
 import { exportPng, exportStaticSvg, exportSvg, copySvg } from "./exporters";
 import { fallbackFontFamily, readFontMetadata } from "./fontMetadata";
@@ -74,6 +74,11 @@ function applyElementPatch(element: GraphicElement, patch: Partial<GraphicElemen
 
 function clampProjectElements(project: Project): Project {
   return { ...project, elements: project.elements.map((element) => clampElement(element, project)) };
+}
+
+function roundedCanvasWidth(width: number, gridSize: number): number {
+  const grid = Math.max(1, gridSize || 8);
+  return Math.ceil(width / grid) * grid;
 }
 
 function cleanProject(project: Project): Project {
@@ -148,6 +153,36 @@ function App() {
   };
 
   useEffect(() => saveLocal(project), [project]);
+
+  useLayoutEffect(() => {
+    if (editingId) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    const elementNodes = Array.from(svg.querySelectorAll<SVGGElement>("[data-label-element='true']"));
+    if (!elementNodes.length) return;
+
+    const svgRect = svg.getBoundingClientRect();
+    if (svgRect.width <= 0) return;
+    const unitsPerPixel = project.canvas.width / svgRect.width;
+    const rightEdge = elementNodes.reduce((right, node) => {
+      const rect = node.getBoundingClientRect();
+      return Math.max(right, (rect.right - svgRect.left) * unitsPerPixel);
+    }, 0);
+    const neededWidth = roundedCanvasWidth(rightEdge + project.canvas.padding, project.canvas.gridSize);
+
+    if (neededWidth > project.canvas.width) {
+      setHistory((current) => ({
+        ...current,
+        present: {
+          ...current.present,
+          canvas: {
+            ...current.present.canvas,
+            width: neededWidth
+          }
+        }
+      }));
+    }
+  }, [editingId, project.canvas.gridSize, project.canvas.padding, project.canvas.width, project.elements, project.fonts, project.humanize]);
 
   useEffect(() => {
     const styleId = "micrographics-uploaded-fonts";
@@ -556,18 +591,13 @@ const LabelSvg = forwardRef<SVGSVGElement, LabelSvgProps>(function LabelSvg({ pr
       width={project.canvas.width}
       height={project.canvas.height}
       viewBox={`0 0 ${project.canvas.width} ${project.canvas.height}`}
-      style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom, display: "block" }}
+      style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom, display: "block", overflow: "visible" }}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) select("");
       }}
     >
-      <defs>
-        <clipPath id="canvas-clip">
-          <rect width={project.canvas.width} height={project.canvas.height} />
-        </clipPath>
-      </defs>
       <rect data-export-background="true" width={project.canvas.width} height={project.canvas.height} fill={project.canvas.background} />
-      <g clipPath="url(#canvas-clip)">
+      <g data-export-content="true">
         {project.elements.filter((el) => el.visible).map((el) => <ElementNode key={el.id} el={el} project={project} selected={selectedIds.includes(el.id)} editing={editingId === el.id} setEditingId={setEditingId} select={select} updateElement={updateElement} updateElementSilent={updateElementSilent} pointerDown={pointerDown} />)}
       </g>
       {project.canvas.gridVisible && <GridOverlay project={project} />}
@@ -593,7 +623,7 @@ function ElementNode({ el, project, selected, editing, setEditingId, select, upd
   const opacity = Math.max(0.03, Math.min(1, el.opacity + a.opacity));
   const strokeWidth = normalizeStrokeWidth(el.strokeWidth + a.strokeWidth);
   return (
-    <g transform={`translate(${x} ${y}) rotate(${rotation} ${el.width / 2} ${el.height / 2})`} opacity={opacity} onPointerDown={(event) => pointerDown(event, el)} onClick={(event) => { event.stopPropagation(); select(el.id, event.shiftKey); }} onDoubleClick={(event) => { event.stopPropagation(); if (el.kind === "text") setEditingId(el.id); }}>
+    <g data-label-element="true" transform={`translate(${x} ${y}) rotate(${rotation} ${el.width / 2} ${el.height / 2})`} opacity={opacity} onPointerDown={(event) => pointerDown(event, el)} onClick={(event) => { event.stopPropagation(); select(el.id, event.shiftKey); }} onDoubleClick={(event) => { event.stopPropagation(); if (el.kind === "text") setEditingId(el.id); }}>
       {el.kind === "text" && <TextNode el={el} project={project} editing={editing} adjustment={a} updateElement={updateElement} updateElementSilent={updateElementSilent} setEditingId={setEditingId} />}
       {el.kind === "shape" && <ShapeNode el={el} strokeWidth={strokeWidth} />}
       {el.kind === "icon" && <IconNode el={el} strokeWidth={strokeWidth} />}
