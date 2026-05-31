@@ -134,7 +134,7 @@ function App() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [pngScale, setPngScale] = useState(2);
   const [transparentPng, setTransparentPng] = useState(false);
-  const [includeBg, setIncludeBg] = useState(true);
+  const [includeBg, setIncludeBg] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingFontRole, setPendingFontRole] = useState<FontRole>("normal");
   const [drag, setDrag] = useState<DragState>(null);

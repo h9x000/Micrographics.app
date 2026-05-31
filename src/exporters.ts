@@ -311,19 +311,19 @@ export async function serializeSvg(svg: SVGSVGElement, options: { embedFonts?: b
 }
 
 export function exportSvg(svg: SVGSVGElement, name: string, project: Project) {
-  serializeSvg(svg, { project }).then((source) => {
+  serializeSvg(svg, { includeBackground: false, project }).then((source) => {
     download(`${name}.svg`, new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
   });
 }
 
 export function exportStaticSvg(svg: SVGSVGElement, name: string, project: Project) {
-  serializeSvg(svg, { outlineText: true, project }).then((source) => {
+  serializeSvg(svg, { includeBackground: false, outlineText: true, project }).then((source) => {
     download(`${name}-static.svg`, new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
   });
 }
 
 export async function copySvg(svg: SVGSVGElement, project: Project) {
-  await navigator.clipboard.writeText(await serializeSvg(svg, { project }));
+  await navigator.clipboard.writeText(await serializeSvg(svg, { includeBackground: false, project }));
 }
 
 export async function exportPng(svg: SVGSVGElement, project: Project, scale: number, transparent: boolean, includeBackground: boolean) {
