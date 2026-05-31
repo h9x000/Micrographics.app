@@ -4,6 +4,13 @@ export interface FontMetadata {
   postScriptName?: string;
 }
 
+interface NameRecord {
+  encodingId: number;
+  languageId: number;
+  platformId: number;
+  value: string;
+}
+
 const NAME_IDS = {
   family: 1,
   subfamily: 2,
@@ -26,11 +33,20 @@ function decodeUtf16BE(bytes: Uint8Array): string {
 }
 
 function decodeMacRoman(bytes: Uint8Array): string {
+  if (typeof TextDecoder !== "undefined") {
+    try {
+      return new TextDecoder("macintosh").decode(bytes).replace(/\0/g, "").trim();
+    } catch {
+      // Fall through to the ASCII-compatible fallback.
+    }
+  }
   return Array.from(bytes, (byte) => String.fromCharCode(byte)).join("").replace(/\0/g, "").trim();
 }
 
-function decodeName(bytes: Uint8Array, platformId: number): string {
-  return platformId === 0 || platformId === 3 ? decodeUtf16BE(bytes) : decodeMacRoman(bytes);
+function decodeName(bytes: Uint8Array, platformId: number, encodingId: number): string {
+  if (platformId === 0 || platformId === 3) return decodeUtf16BE(bytes);
+  if (platformId === 1 && encodingId === 0) return decodeMacRoman(bytes);
+  return decodeMacRoman(bytes);
 }
 
 function stripExtension(name: string): string {
@@ -65,24 +81,35 @@ export function readFontMetadata(buffer: ArrayBuffer, fileName: string): FontMet
 
   const count = view.getUint16(nameTableOffset + 2);
   const stringOffset = nameTableOffset + view.getUint16(nameTableOffset + 4);
-  const names = new Map<number, string[]>();
+  const names = new Map<number, NameRecord[]>();
 
   for (let i = 0; i < count; i += 1) {
     const recordOffset = nameTableOffset + 6 + i * 12;
     if (recordOffset + 12 > view.byteLength) break;
 
     const platformId = view.getUint16(recordOffset);
+    const encodingId = view.getUint16(recordOffset + 2);
+    const languageId = view.getUint16(recordOffset + 4);
     const nameId = view.getUint16(recordOffset + 6);
     const length = view.getUint16(recordOffset + 8);
     const offset = stringOffset + view.getUint16(recordOffset + 10);
     if (offset + length > view.byteLength) continue;
 
-    const decoded = decodeName(new Uint8Array(buffer, offset, length), platformId);
+    const decoded = decodeName(new Uint8Array(buffer, offset, length), platformId, encodingId);
     if (!decoded) continue;
-    names.set(nameId, [...(names.get(nameId) ?? []), decoded]);
+    names.set(nameId, [...(names.get(nameId) ?? []), { encodingId, languageId, platformId, value: decoded }]);
   }
 
-  const pick = (id: number) => names.get(id)?.find(Boolean);
+  const pick = (id: number) => {
+    const records = names.get(id) ?? [];
+    return (
+      records.find((record) => record.platformId === 3 && record.languageId === 0x0409)?.value ??
+      records.find((record) => record.platformId === 3)?.value ??
+      records.find((record) => record.platformId === 0)?.value ??
+      records.find((record) => record.platformId === 1 && record.languageId === 0)?.value ??
+      records[0]?.value
+    );
+  };
   const family = pick(NAME_IDS.preferredFamily) ?? pick(NAME_IDS.family) ?? fallbackFontFamily(fileName);
   const subfamily = pick(NAME_IDS.preferredSubfamily) ?? pick(NAME_IDS.subfamily);
   const fullName = pick(NAME_IDS.fullName) ?? (subfamily && !/^regular$/i.test(subfamily) ? `${family} ${subfamily}` : family);

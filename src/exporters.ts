@@ -48,6 +48,16 @@ function cssQuote(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")}"`;
 }
 
+function repairMojibake(value: string): string {
+  if (!/[ÃÂ]/.test(value) || typeof TextDecoder === "undefined") return value;
+  try {
+    const bytes = new Uint8Array(Array.from(value, (char) => char.charCodeAt(0) & 0xff));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return value;
+  }
+}
+
 function fontRoleForStack(stack: string): FontRole | null {
   const families = splitFontFamilies(stack);
   for (const role of Object.keys(fontRoleFamilies) as FontRole[]) {
@@ -58,7 +68,7 @@ function fontRoleForStack(stack: string): FontRole | null {
 
 function installedFamilyForFont(font: UploadedFont | null | undefined): string | null {
   if (!font) return null;
-  return font.family ?? font.fullName ?? font.postScriptName ?? fallbackFontFamily(font.name);
+  return repairMojibake(font.postScriptName ?? font.fullName ?? font.family ?? fallbackFontFamily(font.name));
 }
 
 function fallbackFamilyForStack(stack: string): string {
@@ -185,13 +195,15 @@ async function withPngDpi(blob: Blob, dpi: number): Promise<Blob> {
   return new Blob([output], { type: "image/png" });
 }
 
-export function serializeSvg(svg: SVGSVGElement, options: { includeBackground?: boolean; project?: Project } = {}): string {
+export function serializeSvg(svg: SVGSVGElement, options: { embedFonts?: boolean; includeBackground?: boolean; project?: Project } = {}): string {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   if (options.includeBackground === false) {
     clone.querySelectorAll("[data-export-background]").forEach((node) => node.remove());
   }
   prepareTextFonts(clone, options.project);
-  addEmbeddedFontStyles(clone, options.project);
+  if (options.embedFonts) {
+    addEmbeddedFontStyles(clone, options.project);
+  }
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
   return new XMLSerializer().serializeToString(clone);
@@ -206,7 +218,7 @@ export async function copySvg(svg: SVGSVGElement, project: Project) {
 }
 
 export async function exportPng(svg: SVGSVGElement, project: Project, scale: number, transparent: boolean, includeBackground: boolean) {
-  const source = serializeSvg(svg, { includeBackground, project });
+  const source = serializeSvg(svg, { embedFonts: true, includeBackground, project });
   const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const image = new Image();
