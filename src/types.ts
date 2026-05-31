@@ -1,4 +1,4 @@
-export type ElementKind = "text" | "shape" | "icon" | "group";
+export type ElementKind = "text" | "shape" | "icon" | "svg" | "group";
 export type ShapeKind = "rect" | "line" | "grid" | "barcode" | "circle" | "pill";
 export type IconKind =
   | "warning"
@@ -143,12 +143,33 @@ export interface IconElement extends ElementBase {
   label?: string;
 }
 
+export interface CustomSvgElement extends ElementBase {
+  kind: "svg";
+  svgId: string;
+  content: string;
+  viewBox: string;
+}
+
 export interface GroupElement extends ElementBase {
   kind: "group";
   children: string[];
 }
 
-export type GraphicElement = TextElement | ShapeElement | IconElement | GroupElement;
+export type GraphicElement = TextElement | ShapeElement | IconElement | CustomSvgElement | GroupElement;
+
+export interface CustomSvgAsset {
+  id: string;
+  name: string;
+  content: string;
+  viewBox: string;
+  aspectRatio: number;
+}
+
+export interface CustomLibrarySettings {
+  enabled: boolean;
+  texts: string[];
+  svgs: CustomSvgAsset[];
+}
 
 export interface HumanizeSettings {
   enabled: boolean;
@@ -202,6 +223,7 @@ export interface Project {
   selectedIds: string[];
   humanize: HumanizeSettings;
   generator: GeneratorSettings;
+  customLibrary: CustomLibrarySettings;
   fonts: Record<FontRole, UploadedFont | null>;
 }
 

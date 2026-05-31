@@ -6,6 +6,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  FileText,
   Layers,
   Lock,
   LockOpen,
@@ -25,15 +26,16 @@ import React, { ChangeEvent, PointerEvent, forwardRef, useEffect, useLayoutEffec
 import { Input, Textarea, Checkbox, SelectControl, SliderControl } from "./components/ui/form";
 import { exportPng, exportStaticSvg, exportSvg, copySvg } from "./exporters";
 import { fallbackFontFamily, readFontMetadata } from "./fontMetadata";
-import { createProject, makeOverlay, regenerate, templates } from "./generator";
+import { createProject, makeOverlay, regenerate } from "./generator";
 import { adjustmentFor, transformedText } from "./humanize";
 import { renderIsoPictogram } from "./isoPictograms";
 import { code, createRng } from "./random";
 import { loadLocal, saveLocal } from "./storage";
-import { FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies, fontRoleInternalFamilies, isoPictogramKinds } from "./types";
+import { CustomSvgAsset, CustomSvgElement, FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies, fontRoleInternalFamilies, isoPictogramKinds } from "./types";
 
 type History = { past: Project[]; present: Project; future: Project[] };
 type DragState = { id: string; x: number; y: number; startX: number; startY: number; before: Project } | null;
+type BottomPanelView = "layers" | "custom";
 
 const iconKinds: IconElement["icon"][] = ["warning", "lightning", "globe", "cert", "stamp", "polarity", "bin", "doubleSquare", "arrow", "dotMark", "logo", "crosshair", "chip", "waveform", "antenna", "terminal", "chevron", "bracket", "target", "caliper", "diode", "glyph", "circuitBlock", "waveBadge", "terminalStrip", "equipmentCluster", "safetyPanel", "handlingPanel", "vehicleDotMark", "certification_marks", "regulatory_marks", "safety_pictograms", "warning_decals", "automotive_glass_markings", "recycling_disposal_marks", "handling_shipping_symbols", "technical_instruction_icons", "ansi_safety_pictograms", "iso_7010_safety_signs", "ce_mark", "fcc_mark", "rohs_mark", "weee_mark", "ul_mark", "dot_as1_mark", "e_mark_symbols", ...isoPictogramKinds];
 const shapeKinds: ShapeElement["shape"][] = ["rect", "pill", "grid", "barcode"];
@@ -195,6 +197,47 @@ function roundedCanvasWidth(width: number, gridSize: number): number {
   return Math.ceil(width / grid) * grid;
 }
 
+function svgNumber(value: string | null, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sanitizeSvgAsset(name: string, source: string): CustomSvgAsset | null {
+  const document = new DOMParser().parseFromString(source, "image/svg+xml");
+  const root = document.documentElement;
+  if (root.tagName.toLowerCase() !== "svg" || root.querySelector("parsererror")) return null;
+
+  root.querySelectorAll("script, foreignObject").forEach((node) => node.remove());
+  root.querySelectorAll("*").forEach((node) => {
+    Array.from(node.attributes).forEach((attribute) => {
+      const attrName = attribute.name.toLowerCase();
+      const attrValue = attribute.value.trim().toLowerCase();
+      if (attrName.startsWith("on") || ((attrName === "href" || attrName.endsWith(":href")) && attrValue.startsWith("javascript:"))) {
+        node.removeAttribute(attribute.name);
+      }
+    });
+  });
+
+  const viewBox = root.getAttribute("viewBox");
+  const parts = viewBox?.split(/[\s,]+/).map(Number).filter(Number.isFinite) ?? [];
+  const attrWidth = svgNumber(root.getAttribute("width"), 64);
+  const attrHeight = svgNumber(root.getAttribute("height"), attrWidth);
+  const width = parts.length === 4 ? Math.max(1, parts[2]) : attrWidth;
+  const height = parts.length === 4 ? Math.max(1, parts[3]) : attrHeight;
+  const resolvedViewBox = parts.length === 4 ? parts.join(" ") : `0 0 ${width} ${height}`;
+  const content = root.innerHTML.trim();
+  if (!content) return null;
+
+  return {
+    id: `custom-svg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    name,
+    content,
+    viewBox: resolvedViewBox,
+    aspectRatio: width / height
+  };
+}
+
 function cleanProject(project: Project): Project {
   return resolveProjectOverlaps({
     ...project,
@@ -212,6 +255,11 @@ function cleanProject(project: Project): Project {
       textHighlightColor: project.generator?.textHighlightColor ?? "#000000",
       allow45Rotation: project.generator?.allow45Rotation ?? true,
       preventOverlap: project.generator?.preventOverlap ?? false
+    },
+    customLibrary: {
+      enabled: project.customLibrary?.enabled ?? false,
+      texts: (project.customLibrary?.texts ?? []).map((text) => text.trim()).filter(Boolean),
+      svgs: project.customLibrary?.svgs ?? []
     },
     fonts: {
       normal: project.fonts?.normal ?? null,
@@ -253,9 +301,11 @@ function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingFontRole, setPendingFontRole] = useState<FontRole>("normal");
   const [drag, setDrag] = useState<DragState>(null);
+  const [bottomPanel, setBottomPanel] = useState<BottomPanelView>("layers");
   const svgRef = useRef<SVGSVGElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const jsonRef = useRef<HTMLInputElement>(null);
+  const customSvgRef = useRef<HTMLInputElement>(null);
   const project = history.present;
   const selected = project.elements.find((el) => project.selectedIds.includes(el.id));
 
@@ -395,6 +445,47 @@ function App() {
       generator: { ...p.generator, nonTypeStrokeWidth: nextStrokeWidth },
       elements: p.elements.map((el) => (el.kind === "text" ? el : ({ ...el, strokeWidth: nextStrokeWidth } as GraphicElement)))
     }));
+  }
+
+  function updateCustomTexts(raw: string) {
+    const texts = raw.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+    commit((p) => ({ ...p, customLibrary: { enabled: p.customLibrary?.enabled ?? false, svgs: p.customLibrary?.svgs ?? [], texts } }));
+  }
+
+  function removeCustomText(index: number) {
+    commit((p) => ({
+      ...p,
+      customLibrary: {
+        enabled: p.customLibrary?.enabled ?? false,
+        svgs: p.customLibrary?.svgs ?? [],
+        texts: (p.customLibrary?.texts ?? []).filter((_, itemIndex) => itemIndex !== index)
+      }
+    }));
+  }
+
+  function removeCustomSvg(id: string) {
+    commit((p) => ({
+      ...p,
+      customLibrary: {
+        enabled: p.customLibrary?.enabled ?? false,
+        texts: p.customLibrary?.texts ?? [],
+        svgs: (p.customLibrary?.svgs ?? []).filter((asset) => asset.id !== id)
+      }
+    }));
+  }
+
+  function generateBatch(project: Project): Project {
+    const elements = Array.from({ length: project.generator.batchCount }, (_, i) => {
+      const batch = regenerate(project, `${project.generator.seed}-${i}`);
+      return batch.elements.map((el) => ({
+        ...el,
+        id: `${el.id}-batch-${i}`,
+        x: el.x + (i % 3) * 32,
+        y: el.y + Math.floor(i / 3) * 24,
+        opacity: 0.55
+      } as GraphicElement));
+    }).flat();
+    return resolveProjectOverlaps({ ...project, generator: { ...project.generator, seed: `batch-${Date.now()}`, template: "serial" }, elements });
   }
 
   function deleteSelected() {
@@ -537,6 +628,24 @@ function App() {
     event.target.value = "";
   }
 
+  async function importCustomSvg(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    const assets = (await Promise.all(files.map(async (file) => sanitizeSvgAsset(file.name, await file.text())))).filter((asset): asset is CustomSvgAsset => Boolean(asset));
+    if (assets.length) {
+      commit((p) => ({
+        ...p,
+        customLibrary: {
+          enabled: true,
+          texts: p.customLibrary?.texts ?? [],
+          svgs: [...(p.customLibrary?.svgs ?? []), ...assets]
+        }
+      }));
+      setBottomPanel("custom");
+    }
+    event.target.value = "";
+  }
+
   function bakeHumanization() {
     commit((p) => ({
       ...p,
@@ -623,7 +732,7 @@ function App() {
           <Toggle label="Prevent overlap" checked={project.generator.preventOverlap ?? false} onChange={(preventOverlap) => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, preventOverlap } }))} />
           <div className="grid grid-cols-2 gap-2">
             <NumberField label="Batch count" value={project.generator.batchCount} onChange={(batchCount) => commit((p) => ({ ...p, generator: { ...p.generator, batchCount } }))} />
-            <button className="tool-button mt-5" onClick={() => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, seed: `batch-${Date.now()}`, template: "serial" }, elements: Array.from({ length: p.generator.batchCount }, (_, i) => templates.serial.build(`${p.generator.seed}-${i}`, p.generator).elements.map((el) => ({ ...el, id: `${el.id}-batch-${i}`, x: el.x + (i % 3) * 32, y: el.y + Math.floor(i / 3) * 24, opacity: 0.55 }))).flat() as GraphicElement[] }))}>Batch</button>
+            <button className="tool-button mt-5" onClick={() => commit(generateBatch)}>Batch</button>
           </div>
         </Section>
         <Section title="Humanize">
@@ -691,7 +800,20 @@ function App() {
       </aside>
 
       <section className="panel col-start-2 overflow-hidden border-t">
-        <LayerList project={project} commit={commit} select={select} moveLayer={moveLayer} />
+        <BottomPanel
+          active={bottomPanel}
+          setActive={setBottomPanel}
+          project={project}
+          commit={commit}
+          select={select}
+          moveLayer={moveLayer}
+          customSvgRef={customSvgRef}
+          importCustomSvg={importCustomSvg}
+          updateCustomTexts={updateCustomTexts}
+          removeCustomText={removeCustomText}
+          removeCustomSvg={removeCustomSvg}
+        />
+        <input ref={customSvgRef} className="hidden" type="file" accept=".svg,image/svg+xml" multiple onChange={importCustomSvg} />
       </section>
     </div>
   );
@@ -770,6 +892,7 @@ function ElementNode({ el, project, selected, editing, setEditingId, select, upd
       {el.kind === "text" && <TextNode el={el} project={project} editing={editing} adjustment={a} updateElement={updateElement} updateElementSilent={updateElementSilent} setEditingId={setEditingId} />}
       {el.kind === "shape" && <ShapeNode el={el} strokeWidth={strokeWidth} />}
       {el.kind === "icon" && <IconNode el={el} strokeWidth={strokeWidth} />}
+      {el.kind === "svg" && <CustomSvgNode el={el} />}
       {selected && <rect x={-4} y={-4} width={el.width + 8} height={el.height + 8} fill="none" stroke="#000000" strokeDasharray="4 3" strokeWidth={1} pointerEvents="none" />}
     </g>
   );
@@ -817,6 +940,10 @@ function ShapeNode({ el, strokeWidth }: { el: ShapeElement; strokeWidth: number 
   }
   if (el.shape === "barcode") return <g>{Array.from({ length: 42 }, (_, i) => <rect key={i} x={(el.width / 42) * i} y={0} width={(i % 5 === 0 ? 3 : i % 2 ? 1 : 2) * (el.width / 120)} height={el.height} fill={el.stroke} />)}</g>;
   return <rect width={el.width} height={el.height} rx={0} fill={el.fill} stroke={el.stroke} strokeWidth={strokeWidth} />;
+}
+
+function CustomSvgNode({ el }: { el: CustomSvgElement }) {
+  return <svg width={el.width} height={el.height} viewBox={el.viewBox} preserveAspectRatio="xMidYMid meet" overflow="visible" dangerouslySetInnerHTML={{ __html: el.content }} />;
 }
 
 function IconNode({ el, strokeWidth }: { el: IconElement; strokeWidth: number }) {
@@ -911,11 +1038,57 @@ function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelec
   );
 }
 
-function LayerList({ project, commit, select, moveLayer }: { project: Project; commit: (m: (p: Project) => Project) => void; select: (id: string, additive?: boolean) => void; moveLayer: (id: string, dir: -1 | 1) => void }) {
+function BottomPanel({
+  active,
+  setActive,
+  project,
+  commit,
+  select,
+  moveLayer,
+  customSvgRef,
+  importCustomSvg,
+  updateCustomTexts,
+  removeCustomText,
+  removeCustomSvg
+}: {
+  active: BottomPanelView;
+  setActive: (view: BottomPanelView) => void;
+  project: Project;
+  commit: (m: (p: Project) => Project) => void;
+  select: (id: string, additive?: boolean) => void;
+  moveLayer: (id: string, dir: -1 | 1) => void;
+  customSvgRef: React.RefObject<HTMLInputElement | null>;
+  importCustomSvg: (event: ChangeEvent<HTMLInputElement>) => void;
+  updateCustomTexts: (raw: string) => void;
+  removeCustomText: (index: number) => void;
+  removeCustomSvg: (id: string) => void;
+}) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-black px-3 py-2 text-xs font-semibold uppercase text-neutral-600"><Layers size={14} />Layers</div>
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex items-center gap-2 border-b border-black px-3 py-2 text-xs font-semibold uppercase text-neutral-600">
+        <button className={`tool-button h-7 px-2 ${active === "layers" ? "bg-black text-white" : ""}`} onClick={() => setActive("layers")}><Layers size={13} />Layers</button>
+        <button className={`tool-button h-7 px-2 ${active === "custom" ? "bg-black text-white" : ""}`} onClick={() => setActive("custom")}><FileText size={13} />Custom</button>
+      </div>
+      {active === "layers" ? (
+        <LayerList project={project} commit={commit} select={select} moveLayer={moveLayer} />
+      ) : (
+        <CustomLibraryPanel
+          project={project}
+          commit={commit}
+          customSvgRef={customSvgRef}
+          importCustomSvg={importCustomSvg}
+          updateCustomTexts={updateCustomTexts}
+          removeCustomText={removeCustomText}
+          removeCustomSvg={removeCustomSvg}
+        />
+      )}
+    </div>
+  );
+}
+
+function LayerList({ project, commit, select, moveLayer }: { project: Project; commit: (m: (p: Project) => Project) => void; select: (id: string, additive?: boolean) => void; moveLayer: (id: string, dir: -1 | 1) => void }) {
+  return (
+    <div className="flex-1 overflow-auto p-2">
         {[...project.elements].reverse().map((el) => (
           <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-md border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-black bg-neutral-100" : "border-black bg-white"}`} onClick={() => select(el.id)}>
             <button className="icon-button" title="Show/hide" onClick={(event) => { event.stopPropagation(); commit((p) => resolveProjectOverlaps({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, visible: !item.visible } : item) })); }}>{el.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
@@ -925,6 +1098,52 @@ function LayerList({ project, commit, select, moveLayer }: { project: Project; c
             <button className="icon-button" title="Move down" onClick={(event) => { event.stopPropagation(); moveLayer(el.id, -1); }}><ArrowDown size={13} /></button>
           </div>
         ))}
+    </div>
+  );
+}
+
+function CustomLibraryPanel({
+  project,
+  commit,
+  customSvgRef,
+  updateCustomTexts,
+  removeCustomText,
+  removeCustomSvg
+}: {
+  project: Project;
+  commit: (m: (p: Project) => Project) => void;
+  customSvgRef: React.RefObject<HTMLInputElement | null>;
+  importCustomSvg: (event: ChangeEvent<HTMLInputElement>) => void;
+  updateCustomTexts: (raw: string) => void;
+  removeCustomText: (index: number) => void;
+  removeCustomSvg: (id: string) => void;
+}) {
+  const custom = project.customLibrary ?? { enabled: false, texts: [], svgs: [] };
+  return (
+    <div className="grid flex-1 grid-cols-[320px_1fr_1fr] gap-3 overflow-auto p-3 text-xs">
+      <div>
+        <Toggle label="Custom mode" checked={custom.enabled} onChange={(enabled) => commit((p) => ({ ...p, customLibrary: { enabled, texts: p.customLibrary?.texts ?? [], svgs: p.customLibrary?.svgs ?? [] } }))} />
+        <TextArea label="Custom words" value={custom.texts.join("\n")} onChange={updateCustomTexts} />
+        <button className="tool-button w-full" onClick={() => customSvgRef.current?.click()}><Upload size={14} />Upload SVG</button>
+      </div>
+      <div className="overflow-auto">
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-neutral-600"><FileText size={13} />Words</div>
+        {custom.texts.length ? custom.texts.map((text, index) => (
+          <div key={`${text}-${index}`} className="mb-1 grid grid-cols-[1fr_28px] items-center gap-2 rounded-md border border-black bg-white px-2 py-1">
+            <span className="truncate">{text}</span>
+            <button className="icon-button h-6 w-6" title="Remove word" onClick={() => removeCustomText(index)}><Trash2 size={12} /></button>
+          </div>
+        )) : <p className="text-neutral-600">No custom words</p>}
+      </div>
+      <div className="overflow-auto">
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-neutral-600"><Upload size={13} />SVGs</div>
+        {custom.svgs.length ? custom.svgs.map((asset) => (
+          <div key={asset.id} className="mb-1 grid grid-cols-[1fr_70px_28px] items-center gap-2 rounded-md border border-black bg-white px-2 py-1">
+            <span className="truncate">{asset.name}</span>
+            <span className="text-neutral-600">{asset.viewBox.split(/\s+/).slice(2).join("x")}</span>
+            <button className="icon-button h-6 w-6" title="Remove SVG" onClick={() => removeCustomSvg(asset.id)}><Trash2 size={12} /></button>
+          </div>
+        )) : <p className="text-neutral-600">No custom SVGs</p>}
       </div>
     </div>
   );
