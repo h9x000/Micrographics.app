@@ -483,7 +483,7 @@ function App() {
         <Section title="Export">
           <div className="grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG</button>
-            <button className="tool-button" onClick={() => svgRef.current && exportPng(svgRef.current, project, pngScale, transparentPng, includeBg)}><Download size={14} />PNG</button>
+            <button className="tool-button" onClick={() => svgRef.current && exportPng(svgRef.current, project, pngScale, transparentPng, includeBg)}><Download size={14} />PNG 300 DPI</button>
             <button className="tool-button" onClick={() => svgRef.current && copySvg(svgRef.current, project)}><Copy size={14} />Copy SVG</button>
             <button className="tool-button" onClick={saveProjectJson}><FileJson size={14} />JSON</button>
           </div>
