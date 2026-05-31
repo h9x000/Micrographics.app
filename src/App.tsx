@@ -6,7 +6,6 @@ import {
   Download,
   Eye,
   EyeOff,
-  FileJson,
   Layers,
   Lock,
   LockOpen,
@@ -23,7 +22,7 @@ import {
   ZoomOut
 } from "lucide-react";
 import React, { ChangeEvent, PointerEvent, forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { exportPng, exportSvg, copySvg, download } from "./exporters";
+import { exportPng, exportStaticSvg, exportSvg, copySvg } from "./exporters";
 import { fallbackFontFamily, readFontMetadata } from "./fontMetadata";
 import { createProject, makeOverlay, regenerate, templates } from "./generator";
 import { adjustmentFor, transformedText } from "./humanize";
@@ -188,7 +187,7 @@ function App() {
       }
       if (meta && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        saveProjectJson();
+        saveLocal(project);
       }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) && project.selectedIds.length && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
         event.preventDefault();
@@ -321,10 +320,6 @@ function App() {
       locked: false
     };
     commit((p) => ({ ...p, elements: [...p.elements, el], selectedIds: [el.id] }));
-  }
-
-  function saveProjectJson() {
-    download(`${project.name || "micrographic"}.json`, new Blob([JSON.stringify(project, null, 2)], { type: "application/json" }));
   }
 
   function loadProjectJson(event: ChangeEvent<HTMLInputElement>) {
@@ -483,9 +478,9 @@ function App() {
         <Section title="Export">
           <div className="grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG</button>
+            <button className="tool-button" onClick={() => svgRef.current && exportStaticSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG STATIC</button>
             <button className="tool-button" onClick={() => svgRef.current && exportPng(svgRef.current, project, pngScale, transparentPng, includeBg)}><Download size={14} />PNG 300 DPI</button>
             <button className="tool-button" onClick={() => svgRef.current && copySvg(svgRef.current, project)}><Copy size={14} />Copy SVG</button>
-            <button className="tool-button" onClick={saveProjectJson}><FileJson size={14} />JSON</button>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Select label="PNG scale" value={String(pngScale)} onChange={(value) => setPngScale(Number(value))} options={[1, 2, 3, 4, 8].map((n) => ({ value: String(n), label: `${n}x` }))} />

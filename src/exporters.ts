@@ -1,5 +1,6 @@
 import { fallbackFontFamily } from "./fontMetadata";
 import { FontRole, Project, UploadedFont, fontRoleFamilies, fontRoleInternalFamilies } from "./types";
+import * as opentype from "opentype.js";
 
 export function download(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -71,26 +72,56 @@ function installedFamilyForFont(font: UploadedFont | null | undefined): string |
   return repairMojibake(font.postScriptName ?? font.fullName ?? font.family ?? fallbackFontFamily(font.name));
 }
 
+async function parseUploadedFont(font: UploadedFont | null | undefined): Promise<opentype.Font | null> {
+  if (!font?.dataUrl) return null;
+  const base64 = font.dataUrl.split(",")[1];
+  if (!base64) return null;
+  const binary = atob(base64);
+  const buffer = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return opentype.parse(buffer);
+}
+
+async function resolveFontName(font: UploadedFont | null | undefined): Promise<string | null> {
+  if (!font) return null;
+  if (font.postScriptName || font.fullName || font.family) return installedFamilyForFont(font);
+
+  try {
+    const parsed = await parseUploadedFont(font);
+    const names = parsed?.names;
+    const postScriptName = names?.postScriptName?.en;
+    const fullName = names?.fullName?.en;
+    const family = names?.fontFamily?.en;
+    return repairMojibake(postScriptName ?? fullName ?? family ?? fallbackFontFamily(font.name));
+  } catch {
+    return repairMojibake(fallbackFontFamily(font.name));
+  }
+}
+
 function fallbackFamilyForStack(stack: string): string {
   return splitFontFamilies(stack).find((family) => !family.startsWith("MicroFont") && !genericFamilies.has(family.toLowerCase())) ?? "Arial";
 }
 
-function exportFamilyForStack(stack: string, project?: Project): string {
+async function exportFamilyForStack(stack: string, project?: Project): Promise<string> {
   const role = fontRoleForStack(stack);
   if (!role) return fallbackFamilyForStack(stack);
-  return installedFamilyForFont(project?.fonts?.[role]) ?? fallbackFamilyForStack(fontRoleFamilies[role]);
+  return (await resolveFontName(project?.fonts?.[role])) ?? fallbackFamilyForStack(fontRoleFamilies[role]);
 }
 
-function addEmbeddedFontStyles(clone: SVGSVGElement, project?: Project) {
+async function addEmbeddedFontStyles(clone: SVGSVGElement, project?: Project) {
   if (!project) return;
-  const rules = (Object.keys(project.fonts ?? {}) as FontRole[])
-    .map((role) => {
+  const rules = (
+    await Promise.all((Object.keys(project.fonts ?? {}) as FontRole[])
+      .map(async (role) => {
       const font = project.fonts?.[role];
-      const family = installedFamilyForFont(font);
+      const family = await resolveFontName(font);
       if (!font || !family) return "";
       return `@font-face{font-family:${cssQuote(family)};src:url("${font.dataUrl}");font-style:normal;}`;
-    })
-    .filter(Boolean);
+    }))
+  ).filter(Boolean);
 
   if (!rules.length) return;
 
@@ -101,18 +132,85 @@ function addEmbeddedFontStyles(clone: SVGSVGElement, project?: Project) {
   defs.insertBefore(style, defs.firstChild);
 }
 
-function prepareTextFonts(clone: SVGSVGElement, project?: Project) {
-  clone.querySelectorAll("text").forEach((node) => {
+async function prepareTextFonts(clone: SVGSVGElement, project?: Project) {
+  for (const node of clone.querySelectorAll("text")) {
     const attrFamily = node.getAttribute("font-family");
     const styleFamily = (node as SVGTextElement).style.fontFamily;
     const sourceFamily = attrFamily || styleFamily;
-    if (!sourceFamily) return;
+    if (!sourceFamily) continue;
 
-    const family = exportFamilyForStack(sourceFamily, project);
+    const family = await exportFamilyForStack(sourceFamily, project);
     node.setAttribute("font-family", family);
     node.setAttribute("font-style", node.getAttribute("font-style") ?? "normal");
     (node as SVGTextElement).style.removeProperty("font-family");
-  });
+  }
+}
+
+function pathDataForText(font: opentype.Font, value: string, x: number, y: number, fontSize: number, letterSpacing: number): string {
+  const scale = fontSize / font.unitsPerEm;
+  const baseline = y + font.ascender * scale;
+  let cursor = x;
+  let data = "";
+
+  for (const char of value) {
+    const glyph = font.charToGlyph(char);
+    data += glyph.getPath(cursor, baseline, fontSize).toPathData(3);
+    cursor += (glyph.advanceWidth ?? font.unitsPerEm * 0.5) * scale + letterSpacing;
+  }
+
+  return data;
+}
+
+function copyTextPaint(text: SVGTextElement, path: SVGPathElement) {
+  for (const attr of ["fill", "stroke", "stroke-width", "font-weight", "letter-spacing", "opacity"]) {
+    const value = text.getAttribute(attr);
+    if (value !== null) path.setAttribute(attr, value);
+  }
+  if (!path.hasAttribute("fill")) path.setAttribute("fill", "black");
+}
+
+async function outlineTextFonts(clone: SVGSVGElement, project?: Project) {
+  const fontCache = new Map<FontRole, opentype.Font | null>();
+
+  for (const text of Array.from(clone.querySelectorAll("text"))) {
+    const sourceFamily = text.getAttribute("font-family") || text.style.fontFamily;
+    const role = sourceFamily ? fontRoleForStack(sourceFamily) : null;
+    const font = role
+      ? fontCache.has(role)
+        ? fontCache.get(role)
+        : await parseUploadedFont(project?.fonts?.[role]).then((parsed) => {
+            fontCache.set(role, parsed);
+            return parsed;
+          }).catch(() => {
+            fontCache.set(role, null);
+            return null;
+          })
+      : null;
+
+    if (!font) continue;
+
+    const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    const fontSize = Number(text.getAttribute("font-size") ?? text.style.fontSize.replace("px", "") ?? 16);
+    const letterSpacing = Number(text.getAttribute("letter-spacing") ?? text.style.letterSpacing.replace("px", "") ?? 0);
+    const tspans = text.querySelectorAll("tspan");
+    const lineNodes = tspans.length ? Array.from(tspans) : [text];
+
+    for (const line of lineNodes) {
+      const value = line.textContent ?? "";
+      if (!value) continue;
+      const x = Number((line as SVGTSpanElement).getAttribute?.("x") ?? text.getAttribute("x") ?? 0);
+      const y = Number((line as SVGTSpanElement).getAttribute?.("y") ?? text.getAttribute("y") ?? 0);
+      const d = pathDataForText(font, value, x, y, fontSize, letterSpacing);
+      if (!d) continue;
+
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      copyTextPaint(text, path);
+      group.append(path);
+    }
+
+    text.replaceWith(group);
+  }
 }
 
 function getCrcTable(): Uint32Array {
@@ -195,14 +293,17 @@ async function withPngDpi(blob: Blob, dpi: number): Promise<Blob> {
   return new Blob([output], { type: "image/png" });
 }
 
-export function serializeSvg(svg: SVGSVGElement, options: { embedFonts?: boolean; includeBackground?: boolean; project?: Project } = {}): string {
+export async function serializeSvg(svg: SVGSVGElement, options: { embedFonts?: boolean; includeBackground?: boolean; outlineText?: boolean; project?: Project } = {}): Promise<string> {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   if (options.includeBackground === false) {
     clone.querySelectorAll("[data-export-background]").forEach((node) => node.remove());
   }
-  prepareTextFonts(clone, options.project);
+  if (options.outlineText) {
+    await outlineTextFonts(clone, options.project);
+  }
+  await prepareTextFonts(clone, options.project);
   if (options.embedFonts) {
-    addEmbeddedFontStyles(clone, options.project);
+    await addEmbeddedFontStyles(clone, options.project);
   }
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
@@ -210,15 +311,23 @@ export function serializeSvg(svg: SVGSVGElement, options: { embedFonts?: boolean
 }
 
 export function exportSvg(svg: SVGSVGElement, name: string, project: Project) {
-  download(`${name}.svg`, new Blob([serializeSvg(svg, { project })], { type: "image/svg+xml;charset=utf-8" }));
+  serializeSvg(svg, { project }).then((source) => {
+    download(`${name}.svg`, new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+  });
+}
+
+export function exportStaticSvg(svg: SVGSVGElement, name: string, project: Project) {
+  serializeSvg(svg, { outlineText: true, project }).then((source) => {
+    download(`${name}-static.svg`, new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+  });
 }
 
 export async function copySvg(svg: SVGSVGElement, project: Project) {
-  await navigator.clipboard.writeText(serializeSvg(svg, { project }));
+  await navigator.clipboard.writeText(await serializeSvg(svg, { project }));
 }
 
 export async function exportPng(svg: SVGSVGElement, project: Project, scale: number, transparent: boolean, includeBackground: boolean) {
-  const source = serializeSvg(svg, { embedFonts: true, includeBackground, project });
+  const source = await serializeSvg(svg, { embedFonts: true, includeBackground, project });
   const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const image = new Image();
