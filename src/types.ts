@@ -175,6 +175,7 @@ export interface GeneratorSettings {
   typeMax: number;
   nonTypeMin: number;
   nonTypeMax: number;
+  nonTypeStrokeWidth: number;
   textHighlight: boolean;
   textHighlightColor: string;
   allow45Rotation: boolean;

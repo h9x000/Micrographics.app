@@ -5,8 +5,8 @@
 :root {
   color-scheme: light;
   font-family: Inter, "Arial Narrow", Arial, sans-serif;
-  background: #f1f5f9;
-  color: #0f172a;
+  background: #ffffff;
+  color: #000000;
 }
 
 * {
@@ -28,12 +28,12 @@ textarea {
 }
 
 .checker {
-  background-color: #e2e8f0;
+  background-color: #000000;
   background-image:
-    linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
-    linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
-    linear-gradient(-45deg, transparent 75%, #cbd5e1 75%);
+    linear-gradient(45deg, #222222 25%, transparent 25%),
+    linear-gradient(-45deg, #222222 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #222222 75%),
+    linear-gradient(-45deg, transparent 75%, #222222 75%);
   background-position:
     0 0,
     0 8px,
@@ -43,25 +43,25 @@ textarea {
 }
 
 .control {
-  @apply h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 shadow-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200;
+  @apply h-9 w-full rounded-md border border-black bg-white px-3 text-sm text-black shadow-sm outline-none focus:border-black focus:ring-2 focus:ring-neutral-300;
 }
 
 .label {
-  @apply mb-1.5 block text-[10px] font-semibold uppercase text-slate-500;
+  @apply mb-1.5 block text-[10px] font-semibold uppercase text-neutral-600;
 }
 
 .tool-button {
-  @apply inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-900 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-9 items-center justify-center gap-1 rounded-md border border-black bg-white px-3 text-xs font-semibold uppercase text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .icon-button {
-  @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-900 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-black bg-white text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .panel {
-  @apply border-slate-200 bg-white;
+  @apply border-black bg-white;
 }
 
 .range {
-  @apply h-2 w-full accent-slate-950;
+  @apply h-2 w-full accent-black;
 }

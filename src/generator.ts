@@ -8,7 +8,7 @@ const gray = black;
 const serialTemplate: TemplateId = "serial";
 
 function normalizeStrokeWidth(strokeWidth: number): number {
-  return strokeWidth > 0 ? Math.max(1, Math.min(2, strokeWidth)) : 0;
+  return strokeWidth > 0 ? Math.max(1, Math.min(5, strokeWidth)) : 0;
 }
 
 function rotationOptions(allow45Rotation = true): number[] {
@@ -26,8 +26,8 @@ function baseCanvas(width = 768, height = 512, background = white): CanvasSettin
     padding: 32,
     background,
     exportBackground: background,
-    previewBackground: "checker",
-    previewCustom: "#2a2a2a",
+    previewBackground: "black",
+    previewCustom: "#000000",
     roundedBackground: false,
     frame: false,
     gridVisible: false,
@@ -186,6 +186,7 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
   const palette = paletteFor(seed, canvas);
   const occupied: Rect[] = [];
   const rotations = rotationOptions(settings?.allow45Rotation ?? true);
+  const nonTypeStrokeWidth = normalizeStrokeWidth(settings?.nonTypeStrokeWidth ?? 1.5);
   const makeSlot = (w: number, h: number, loose = false) => randomSlot(rng, canvas, w, h, occupied, loose);
   const label = () => pick(rng, ["NX", "FC", "RU", "TC", "SA", "Q", "VX", "K"]);
   const glyphs = ["⏚", "⎓", "⏻", "⌁", "⌖", "⌬", "◆", "◇", "□", "▣", "▲", "△", "●", "○", "※", "№", "Ω", "µ", "±", "↯"];
@@ -259,6 +260,7 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
     const h = kind === "barcode" ? pick(rng, [36, 48, 72, 96]) : pick(rng, [16, 24, 32, 48, 64, 96, 144]);
     const slot = makeSlot(w, Math.max(1, h));
     const el = shape(rng, kind, `${kind} component`, slot.x, slot.y, w, Math.max(1, h), kind === "rect" || kind === "pill" || kind === "grid" ? "none" : palette.fg, pick(rng, [palette.fg, palette.fg, palette.muted]));
+    el.strokeWidth = nonTypeStrokeWidth;
     el.rotation = pick(rng, rotations);
     return el;
   };
@@ -269,6 +271,7 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
     const el = icon(rng, kind, `${kind} mark`, slot.x, slot.y, size, kind === "cert" || kind === "stamp" || kind === "logo" ? label() : kind === "glyph" ? pick(rng, glyphs) : undefined);
     el.fill = palette.fg;
     el.stroke = pick(rng, [palette.fg, palette.fg, palette.muted]);
+    el.strokeWidth = nonTypeStrokeWidth;
     el.rotation = pick(rng, rotations);
     return el;
   };
@@ -409,8 +412,9 @@ export function createProject(seed = "micro-001", template: TemplateId = serialT
       typeMax: 18,
       nonTypeMin: 18,
       nonTypeMax: 30,
+      nonTypeStrokeWidth: 1.5,
       textHighlight: false,
-      textHighlightColor: "#b7d7ff",
+      textHighlightColor: "#000000",
       allow45Rotation: true
     },
     fonts: {
@@ -428,6 +432,7 @@ export function regenerate(project: Project, seed: string, template = serialTemp
     typeMax: project.generator.typeMax,
     nonTypeMin: project.generator.nonTypeMin,
     nonTypeMax: project.generator.nonTypeMax,
+    nonTypeStrokeWidth: project.generator.nonTypeStrokeWidth,
     textHighlight: project.generator.textHighlight,
     textHighlightColor: project.generator.textHighlightColor,
     allow45Rotation: project.generator.allow45Rotation

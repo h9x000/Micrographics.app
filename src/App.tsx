@@ -49,7 +49,7 @@ function clampValue(value: number, min: number, max: number) {
 }
 
 function normalizeStrokeWidth(strokeWidth: number): number {
-  return strokeWidth > 0 ? clampValue(strokeWidth, 1, 2) : 0;
+  return strokeWidth > 0 ? clampValue(strokeWidth, 1, 5) : 0;
 }
 
 function clampElement(element: GraphicElement, project: Project): GraphicElement {
@@ -92,9 +92,10 @@ function cleanProject(project: Project): Project {
       typeMax: project.generator?.typeMax ?? 18,
       nonTypeMin: project.generator?.nonTypeMin ?? 18,
       nonTypeMax: project.generator?.nonTypeMax ?? 30,
+      nonTypeStrokeWidth: normalizeStrokeWidth(project.generator?.nonTypeStrokeWidth ?? 1.5),
       template: "serial",
       textHighlight: project.generator?.textHighlight ?? false,
-      textHighlightColor: project.generator?.textHighlightColor ?? "#b7d7ff",
+      textHighlightColor: project.generator?.textHighlightColor ?? "#000000",
       allow45Rotation: project.generator?.allow45Rotation ?? true
     },
     fonts: {
@@ -107,6 +108,8 @@ function cleanProject(project: Project): Project {
       ...project.canvas,
       background: "#ffffff",
       exportBackground: "#ffffff",
+      previewBackground: "black",
+      previewCustom: "#000000",
       width: 768,
       height: 256,
       padding: 32,
@@ -270,6 +273,15 @@ function App() {
     silent((p) => ({ ...p, elements: p.elements.map((el) => (el.id === id ? applyElementPatch(el, patch, p) : el)) }));
   }
 
+  function updateNonTypeStrokeWidth(strokeWidth: number) {
+    const nextStrokeWidth = normalizeStrokeWidth(strokeWidth);
+    commit((p) => ({
+      ...p,
+      generator: { ...p.generator, nonTypeStrokeWidth: nextStrokeWidth },
+      elements: p.elements.map((el) => (el.kind === "text" ? el : ({ ...el, strokeWidth: nextStrokeWidth } as GraphicElement)))
+    }));
+  }
+
   function deleteSelected() {
     commit((p) => ({ ...p, elements: p.elements.filter((el) => !p.selectedIds.includes(el.id) || el.locked), selectedIds: [] }));
   }
@@ -326,7 +338,7 @@ function App() {
       opacity: 1,
       fill: shape === "rect" || shape === "pill" ? "none" : "#111111",
       stroke: "#111111",
-      strokeWidth: 1.5,
+      strokeWidth: normalizeStrokeWidth(project.generator.nonTypeStrokeWidth ?? 1.5),
       cornerRadius: 0,
       visible: true,
       locked: false,
@@ -351,7 +363,7 @@ function App() {
       opacity: 1,
       fill: "#111111",
       stroke: "#111111",
-      strokeWidth: 1.5,
+      strokeWidth: normalizeStrokeWidth(project.generator.nonTypeStrokeWidth ?? 1.5),
       cornerRadius: 0,
       visible: true,
       locked: false
@@ -451,10 +463,10 @@ function App() {
   }
 
   const bgClass = project.canvas.previewBackground === "checker" ? "checker" : "";
-  const previewStyle = project.canvas.previewBackground === "black" ? { background: "#050505" } : project.canvas.previewBackground === "white" ? { background: "#f8fafc" } : project.canvas.previewBackground === "custom" ? { background: project.canvas.previewCustom } : undefined;
+  const previewStyle = project.canvas.previewBackground === "black" ? { background: "#000000" } : project.canvas.previewBackground === "white" ? { background: "#ffffff" } : project.canvas.previewBackground === "custom" ? { background: project.canvas.previewCustom } : undefined;
 
   return (
-    <div className="grid h-screen grid-cols-[320px_1fr_344px] grid-rows-[1fr_220px] bg-slate-100 text-slate-950">
+    <div className="grid h-screen grid-cols-[320px_1fr_344px] grid-rows-[1fr_220px] bg-white text-black">
       <aside className="panel row-span-2 overflow-y-auto border-r p-3">
         <Header project={project} commit={commit} undo={undo} redo={redo} canUndo={history.past.length > 0} canRedo={history.future.length > 0} />
         <Section title="Serial Sticker">
@@ -475,8 +487,9 @@ function App() {
             <NumberField label="Non-type min" value={project.generator.nonTypeMin ?? 18} onChange={(nonTypeMin) => commit((p) => ({ ...p, generator: { ...p.generator, nonTypeMin, nonTypeMax: Math.max(nonTypeMin, p.generator.nonTypeMax ?? nonTypeMin) } }))} />
             <NumberField label="Non-type max" value={project.generator.nonTypeMax ?? 30} onChange={(nonTypeMax) => commit((p) => ({ ...p, generator: { ...p.generator, nonTypeMax, nonTypeMin: Math.min(nonTypeMax, p.generator.nonTypeMin ?? nonTypeMax) } }))} />
           </div>
+          <Slider label="Non-type stroke" value={normalizeStrokeWidth(project.generator.nonTypeStrokeWidth ?? 1.5)} min={1} max={5} step={0.25} onChange={updateNonTypeStrokeWidth} />
           <Toggle label="Text highlight" checked={project.generator.textHighlight ?? false} onChange={(textHighlight) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlight } }))} />
-          <ColorField label="Highlight color" value={project.generator.textHighlightColor ?? "#b7d7ff"} onChange={(textHighlightColor) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlightColor } }))} />
+          <ColorField label="Highlight color" value={project.generator.textHighlightColor ?? "#000000"} onChange={(textHighlightColor) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlightColor } }))} />
           <Toggle label="45 degree rotation" checked={project.generator.allow45Rotation ?? true} onChange={(allow45Rotation) => commit((p) => ({ ...p, generator: { ...p.generator, allow45Rotation } }))} />
           <div className="grid grid-cols-2 gap-2">
             <NumberField label="Batch count" value={project.generator.batchCount} onChange={(batchCount) => commit((p) => ({ ...p, generator: { ...p.generator, batchCount } }))} />
@@ -502,10 +515,10 @@ function App() {
           <button className="icon-button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.15, z - 0.1))}><ZoomOut size={15} /></button>
           <button className="icon-button" title="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}><ZoomIn size={15} /></button>
           <button className="icon-button" title="Reset view" onClick={() => { setZoom(0.85); setPan({ x: 0, y: 0 }); }}><RotateCcw size={15} /></button>
-          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
+          <span className="rounded-md border border-black bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
         </div>
         <div className="flex h-full items-center justify-center" style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
-          <div className="shadow-2xl shadow-slate-400/40" style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom }}>
+          <div className="shadow-2xl shadow-black/50" style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom }}>
             <LabelSvg ref={svgRef} project={project} zoom={zoom} selectedIds={project.selectedIds} editingId={editingId} setEditingId={setEditingId} select={select} updateElement={updateElement} updateElementSilent={updateElementSilent} pointerDown={pointerDown} />
           </div>
         </div>
@@ -540,7 +553,7 @@ function App() {
               <button key={role} className="tool-button" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
             ))}
           </div>
-          <div className="mt-2 space-y-1 text-xs text-slate-500">
+          <div className="mt-2 space-y-1 text-xs text-neutral-600">
             {fontRoles.map(({ role, label }) => <div key={role}>{label}: {project.fonts?.[role]?.name ?? "not uploaded"}</div>)}
           </div>
         </Section>
@@ -558,7 +571,7 @@ export default App;
 
 function Header({ project, commit, undo, redo, canUndo, canRedo }: { project: Project; commit: (m: (p: Project) => Project) => void; undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }) {
   return (
-    <div className="mb-3 border-b border-slate-200 pb-3">
+    <div className="mb-3 border-b border-black pb-3">
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-lg font-black uppercase tracking-wide">Micrographics</h1>
         <div className="flex gap-1">
@@ -627,7 +640,7 @@ function ElementNode({ el, project, selected, editing, setEditingId, select, upd
       {el.kind === "text" && <TextNode el={el} project={project} editing={editing} adjustment={a} updateElement={updateElement} updateElementSilent={updateElementSilent} setEditingId={setEditingId} />}
       {el.kind === "shape" && <ShapeNode el={el} strokeWidth={strokeWidth} />}
       {el.kind === "icon" && <IconNode el={el} strokeWidth={strokeWidth} />}
-      {selected && <rect x={-4} y={-4} width={el.width + 8} height={el.height + 8} fill="none" stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1} pointerEvents="none" />}
+      {selected && <rect x={-4} y={-4} width={el.width + 8} height={el.height + 8} fill="none" stroke="#000000" strokeDasharray="4 3" strokeWidth={1} pointerEvents="none" />}
     </g>
   );
 }
@@ -642,7 +655,7 @@ function TextNode({ el, project, editing, adjustment, updateElement, updateEleme
           onChange={(event) => updateElementSilent(el.id, { text: event.target.value } as Partial<GraphicElement>)}
           onBlur={() => setEditingId(null)}
           onKeyDown={(event) => { if (event.key === "Escape") setEditingId(null); }}
-          style={{ width: "100%", height: "100%", background: "#fff", color: "#000", border: "1px solid #ef4444", font: `${el.fontWeight} ${el.fontSize}px ${el.fontFamily}` }}
+          style={{ width: "100%", height: "100%", background: "#fff", color: "#000", border: "1px solid #000000", font: `${el.fontWeight} ${el.fontSize}px ${el.fontFamily}` }}
         />
       </foreignObject>
     );
@@ -651,7 +664,7 @@ function TextNode({ el, project, editing, adjustment, updateElement, updateEleme
   const lines = transformedText(el).split("\n");
   const lineHeight = fontSize * el.lineHeight;
   const highlightEnabled = project.generator.textHighlight ?? false;
-  const highlightColor = project.generator.textHighlightColor ?? "#b7d7ff";
+  const highlightColor = project.generator.textHighlightColor ?? "#000000";
   return (
     <g>
       {highlightEnabled && lines.map((_, i) => (
@@ -731,11 +744,11 @@ function IconNode({ el, strokeWidth }: { el: IconElement; strokeWidth: number })
 
 function GridOverlay({ project }: { project: Project }) {
   const size = project.canvas.gridSize;
-  return <g opacity={0.16} pointerEvents="none">{Array.from({ length: Math.floor(project.canvas.width / size) + 1 }, (_, i) => <line key={`x${i}`} x1={i * size} x2={i * size} y1={0} y2={project.canvas.height} stroke="#ef4444" strokeWidth={1} />)}{Array.from({ length: Math.floor(project.canvas.height / size) + 1 }, (_, i) => <line key={`y${i}`} y1={i * size} y2={i * size} x1={0} x2={project.canvas.width} stroke="#ef4444" strokeWidth={1} />)}</g>;
+  return <g opacity={0.16} pointerEvents="none">{Array.from({ length: Math.floor(project.canvas.width / size) + 1 }, (_, i) => <line key={`x${i}`} x1={i * size} x2={i * size} y1={0} y2={project.canvas.height} stroke="#000000" strokeWidth={1} />)}{Array.from({ length: Math.floor(project.canvas.height / size) + 1 }, (_, i) => <line key={`y${i}`} y1={i * size} y2={i * size} x1={0} x2={project.canvas.width} stroke="#000000" strokeWidth={1} />)}</g>;
 }
 
 function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelected }: { selected?: GraphicElement; updateElement: (id: string, patch: Partial<GraphicElement>) => void; duplicateSelected: () => void; deleteSelected: () => void }) {
-  if (!selected) return <Section title="Selection"><p className="text-sm text-slate-500">Select a layer or click an element in the preview.</p></Section>;
+  if (!selected) return <Section title="Selection"><p className="text-sm text-neutral-600">Select a layer or click an element in the preview.</p></Section>;
   const fontOptions = fontRoles.map(({ role, label }) => ({ label, value: fontRoleFamilies[role] }));
   return (
     <Section title="Selected Element">
@@ -771,10 +784,10 @@ function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelec
 function LayerList({ project, commit, select, moveLayer }: { project: Project; commit: (m: (p: Project) => Project) => void; select: (id: string, additive?: boolean) => void; moveLayer: (id: string, dir: -1 | 1) => void }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 text-xs font-semibold uppercase text-slate-500"><Layers size={14} />Layers</div>
+      <div className="flex items-center gap-2 border-b border-black px-3 py-2 text-xs font-semibold uppercase text-neutral-600"><Layers size={14} />Layers</div>
       <div className="flex-1 overflow-auto p-2">
         {[...project.elements].reverse().map((el) => (
-          <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-md border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-slate-950 bg-slate-100" : "border-slate-200 bg-white"}`} onClick={() => select(el.id)}>
+          <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-md border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-black bg-neutral-100" : "border-black bg-white"}`} onClick={() => select(el.id)}>
             <button className="icon-button" title="Show/hide" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, visible: !item.visible } : item) })); }}>{el.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
             <button className="icon-button" title="Lock" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, locked: !item.locked } : item) })); }}>{el.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
             <span className="truncate">{el.name}</span>
@@ -788,7 +801,7 @@ function LayerList({ project, commit, select, moveLayer }: { project: Project; c
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="mb-4 border-b border-slate-200 pb-4"><h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-slate-500"><AlignJustify size={13} />{title}</h2>{children}</section>;
+  return <section className="mb-4 border-b border-black pb-4"><h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-neutral-600"><AlignJustify size={13} />{title}</h2>{children}</section>;
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
@@ -812,7 +825,7 @@ function Select({ label, value, options, onChange }: { label: string; value: str
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="mb-2 flex items-center justify-between gap-3 text-sm text-slate-700"><span>{label}</span><Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} /></label>;
+  return <label className="mb-2 flex items-center justify-between gap-3 text-sm text-black"><span>{label}</span><Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} /></label>;
 }
 
 function Slider({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
