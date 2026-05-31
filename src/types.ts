@@ -46,7 +46,33 @@ export type IconKind =
   | "weee_mark"
   | "ul_mark"
   | "dot_as1_mark"
-  | "e_mark_symbols";
+  | "e_mark_symbols"
+  | "iso_emergency_exit"
+  | "iso_first_aid"
+  | "iso_eyewash"
+  | "iso_safety_shower"
+  | "iso_assembly_point"
+  | "iso_fire_extinguisher"
+  | "iso_fire_alarm"
+  | "iso_no_smoking"
+  | "iso_no_entry"
+  | "iso_no_mobile"
+  | "iso_wear_eye_protection"
+  | "iso_wear_ear_protection"
+  | "iso_wear_gloves"
+  | "iso_wear_respirator"
+  | "iso_wear_hard_hat"
+  | "iso_warning_flammable"
+  | "iso_warning_corrosive"
+  | "iso_warning_electricity"
+  | "iso_warning_laser"
+  | "iso_warning_biohazard"
+  | "iso_warning_radiation"
+  | "iso_warning_forklift"
+  | "iso_warning_hot_surface"
+  | "iso_warning_slippery_floor"
+  | "iso_warning_overhead_load"
+  | "iso_warning_magnetic_field";
 export type TextTransform = "normal" | "uppercase" | "lowercase";
 export type PaletteName = "whiteBlack" | "blackWhite" | "redBlack" | "grayscale" | "custom";
 export type FontRole = "normal" | "mono" | "wide" | "condensed";
@@ -190,6 +216,35 @@ export const fontRoleInternalFamilies: Record<FontRole, string> = {
   wide: "MicroFontWide",
   condensed: "MicroFontCondensed"
 };
+
+export const isoPictogramKinds: IconKind[] = [
+  "iso_emergency_exit",
+  "iso_first_aid",
+  "iso_eyewash",
+  "iso_safety_shower",
+  "iso_assembly_point",
+  "iso_fire_extinguisher",
+  "iso_fire_alarm",
+  "iso_no_smoking",
+  "iso_no_entry",
+  "iso_no_mobile",
+  "iso_wear_eye_protection",
+  "iso_wear_ear_protection",
+  "iso_wear_gloves",
+  "iso_wear_respirator",
+  "iso_wear_hard_hat",
+  "iso_warning_flammable",
+  "iso_warning_corrosive",
+  "iso_warning_electricity",
+  "iso_warning_laser",
+  "iso_warning_biohazard",
+  "iso_warning_radiation",
+  "iso_warning_forklift",
+  "iso_warning_hot_surface",
+  "iso_warning_slippery_floor",
+  "iso_warning_overhead_load",
+  "iso_warning_magnetic_field"
+];
 
 export const fontStacks = {
   "Sans condensed": "\"Arial Narrow\", \"Roboto Condensed\", Arial, sans-serif",

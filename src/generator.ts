@@ -1,4 +1,4 @@
-import { CanvasSettings, ElementBase, FontRole, GraphicElement, IconKind, Project, ShapeKind, TemplateId, TextElement, fontRoleFamilies } from "./types";
+import { CanvasSettings, ElementBase, FontRole, GraphicElement, IconKind, Project, ShapeKind, TemplateId, TextElement, fontRoleFamilies, isoPictogramKinds } from "./types";
 import { Rng, between, code, createRng, int, pick } from "./random";
 
 const white = "#ffffff";
@@ -319,7 +319,8 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
     "weee_mark",
     "ul_mark",
     "dot_as1_mark",
-    "e_mark_symbols"
+    "e_mark_symbols",
+    ...isoPictogramKinds
   ];
   const shapeKinds: ShapeKind[] = ["rect", "grid", "barcode", "pill"];
   return {

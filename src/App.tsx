@@ -22,18 +22,20 @@ import {
   ZoomOut
 } from "lucide-react";
 import React, { ChangeEvent, PointerEvent, forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { Input, Textarea, Checkbox, SelectControl, SliderControl } from "./components/ui/form";
 import { exportPng, exportStaticSvg, exportSvg, copySvg } from "./exporters";
 import { fallbackFontFamily, readFontMetadata } from "./fontMetadata";
 import { createProject, makeOverlay, regenerate, templates } from "./generator";
 import { adjustmentFor, transformedText } from "./humanize";
+import { renderIsoPictogram } from "./isoPictograms";
 import { code, createRng } from "./random";
 import { loadLocal, saveLocal } from "./storage";
-import { FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies, fontRoleInternalFamilies } from "./types";
+import { FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies, fontRoleInternalFamilies, isoPictogramKinds } from "./types";
 
 type History = { past: Project[]; present: Project; future: Project[] };
 type DragState = { id: string; x: number; y: number; startX: number; startY: number; before: Project } | null;
 
-const iconKinds: IconElement["icon"][] = ["warning", "lightning", "globe", "cert", "stamp", "polarity", "bin", "doubleSquare", "arrow", "dotMark", "logo", "crosshair", "chip", "waveform", "antenna", "terminal", "chevron", "bracket", "target", "caliper", "diode", "glyph", "circuitBlock", "waveBadge", "terminalStrip", "equipmentCluster", "safetyPanel", "handlingPanel", "vehicleDotMark", "certification_marks", "regulatory_marks", "safety_pictograms", "warning_decals", "automotive_glass_markings", "recycling_disposal_marks", "handling_shipping_symbols", "technical_instruction_icons", "ansi_safety_pictograms", "iso_7010_safety_signs", "ce_mark", "fcc_mark", "rohs_mark", "weee_mark", "ul_mark", "dot_as1_mark", "e_mark_symbols"];
+const iconKinds: IconElement["icon"][] = ["warning", "lightning", "globe", "cert", "stamp", "polarity", "bin", "doubleSquare", "arrow", "dotMark", "logo", "crosshair", "chip", "waveform", "antenna", "terminal", "chevron", "bracket", "target", "caliper", "diode", "glyph", "circuitBlock", "waveBadge", "terminalStrip", "equipmentCluster", "safetyPanel", "handlingPanel", "vehicleDotMark", "certification_marks", "regulatory_marks", "safety_pictograms", "warning_decals", "automotive_glass_markings", "recycling_disposal_marks", "handling_shipping_symbols", "technical_instruction_icons", "ansi_safety_pictograms", "iso_7010_safety_signs", "ce_mark", "fcc_mark", "rohs_mark", "weee_mark", "ul_mark", "dot_as1_mark", "e_mark_symbols", ...isoPictogramKinds];
 const shapeKinds: ShapeElement["shape"][] = ["rect", "pill", "grid", "barcode"];
 const fontRoles: Array<{ role: FontRole; label: string }> = [
   { role: "normal", label: "Normal" },
@@ -414,10 +416,10 @@ function App() {
   }
 
   const bgClass = project.canvas.previewBackground === "checker" ? "checker" : "";
-  const previewStyle = project.canvas.previewBackground === "black" ? { background: "#050505" } : project.canvas.previewBackground === "white" ? { background: "#f4f2ea" } : project.canvas.previewBackground === "custom" ? { background: project.canvas.previewCustom } : undefined;
+  const previewStyle = project.canvas.previewBackground === "black" ? { background: "#050505" } : project.canvas.previewBackground === "white" ? { background: "#f8fafc" } : project.canvas.previewBackground === "custom" ? { background: project.canvas.previewCustom } : undefined;
 
   return (
-    <div className="grid h-screen grid-cols-[320px_1fr_344px] grid-rows-[1fr_220px] bg-neutral-900 text-neutral-100">
+    <div className="grid h-screen grid-cols-[320px_1fr_344px] grid-rows-[1fr_220px] bg-slate-100 text-slate-950">
       <aside className="panel row-span-2 overflow-y-auto border-r p-3">
         <Header project={project} commit={commit} undo={undo} redo={redo} canUndo={history.past.length > 0} canRedo={history.future.length > 0} />
         <Section title="Serial Sticker">
@@ -465,10 +467,10 @@ function App() {
           <button className="icon-button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.15, z - 0.1))}><ZoomOut size={15} /></button>
           <button className="icon-button" title="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}><ZoomIn size={15} /></button>
           <button className="icon-button" title="Reset view" onClick={() => { setZoom(0.85); setPan({ x: 0, y: 0 }); }}><RotateCcw size={15} /></button>
-          <span className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs">{Math.round(zoom * 100)}%</span>
+          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
         </div>
         <div className="flex h-full items-center justify-center" style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
-          <div className="shadow-2xl shadow-black/60" style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom }}>
+          <div className="shadow-2xl shadow-slate-400/40" style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom }}>
             <LabelSvg ref={svgRef} project={project} zoom={zoom} selectedIds={project.selectedIds} editingId={editingId} setEditingId={setEditingId} select={select} updateElement={updateElement} updateElementSilent={updateElementSilent} pointerDown={pointerDown} />
           </div>
         </div>
@@ -503,7 +505,7 @@ function App() {
               <button key={role} className="tool-button" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
             ))}
           </div>
-          <div className="mt-2 space-y-1 text-xs text-neutral-400">
+          <div className="mt-2 space-y-1 text-xs text-slate-500">
             {fontRoles.map(({ role, label }) => <div key={role}>{label}: {project.fonts?.[role]?.name ?? "not uploaded"}</div>)}
           </div>
         </Section>
@@ -521,7 +523,7 @@ export default App;
 
 function Header({ project, commit, undo, redo, canUndo, canRedo }: { project: Project; commit: (m: (p: Project) => Project) => void; undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }) {
   return (
-    <div className="mb-3 border-b border-neutral-800 pb-3">
+    <div className="mb-3 border-b border-slate-200 pb-3">
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-lg font-black uppercase tracking-wide">Micrographics</h1>
         <div className="flex gap-1">
@@ -647,6 +649,8 @@ function ShapeNode({ el, strokeWidth }: { el: ShapeElement; strokeWidth: number 
 function IconNode({ el, strokeWidth }: { el: IconElement; strokeWidth: number }) {
   const s = Math.min(el.width, el.height);
   const common = { fill: "none", stroke: el.stroke, strokeWidth, strokeLinecap: "butt" as const, strokeLinejoin: "miter" as const };
+  const isoPictogram = renderIsoPictogram(el, strokeWidth);
+  if (isoPictogram) return isoPictogram;
   if (el.icon === "warning") return <g><path d={`M${s / 2} 4 L${s - 4} ${s - 4} L4 ${s - 4} Z`} {...common} /><line x1={s / 2} y1={s * 0.32} x2={s / 2} y2={s * 0.64} {...common} /><circle cx={s / 2} cy={s * 0.78} r={2} fill={el.stroke} /></g>;
   if (el.icon === "lightning") return <path d={`M${s * 0.58} 2 L${s * 0.2} ${s * 0.55} H${s * 0.48} L${s * 0.36} ${s - 2} L${s * 0.82} ${s * 0.38} H${s * 0.54} Z`} fill={el.fill} />;
   if (el.icon === "globe") return <g><circle cx={s / 2} cy={s / 2} r={s / 2 - 3} {...common} /><path d={`M5 ${s / 2} H${s - 5} M${s / 2} 5 C${s * 0.35} ${s * 0.25} ${s * 0.35} ${s * 0.75} ${s / 2} ${s - 5} M${s / 2} 5 C${s * 0.65} ${s * 0.25} ${s * 0.65} ${s * 0.75} ${s / 2} ${s - 5}`} {...common} /></g>;
@@ -701,7 +705,7 @@ function GridOverlay({ project }: { project: Project }) {
 }
 
 function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelected }: { selected?: GraphicElement; updateElement: (id: string, patch: Partial<GraphicElement>) => void; duplicateSelected: () => void; deleteSelected: () => void }) {
-  if (!selected) return <Section title="Selection"><p className="text-sm text-neutral-500">Select a layer or click an element in the preview.</p></Section>;
+  if (!selected) return <Section title="Selection"><p className="text-sm text-slate-500">Select a layer or click an element in the preview.</p></Section>;
   const fontOptions = fontRoles.map(({ role, label }) => ({ label, value: fontRoleFamilies[role] }));
   return (
     <Section title="Selected Element">
@@ -737,10 +741,10 @@ function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelec
 function LayerList({ project, commit, select, moveLayer }: { project: Project; commit: (m: (p: Project) => Project) => void; select: (id: string, additive?: boolean) => void; moveLayer: (id: string, dir: -1 | 1) => void }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2 text-xs font-black uppercase tracking-widest text-neutral-400"><Layers size={14} />Layers</div>
+      <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 text-xs font-semibold uppercase text-slate-500"><Layers size={14} />Layers</div>
       <div className="flex-1 overflow-auto p-2">
         {[...project.elements].reverse().map((el) => (
-          <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-red-500 bg-red-950/30" : "border-neutral-800 bg-neutral-900"}`} onClick={() => select(el.id)}>
+          <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-md border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-slate-950 bg-slate-100" : "border-slate-200 bg-white"}`} onClick={() => select(el.id)}>
             <button className="icon-button" title="Show/hide" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, visible: !item.visible } : item) })); }}>{el.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
             <button className="icon-button" title="Lock" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, locked: !item.locked } : item) })); }}>{el.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
             <span className="truncate">{el.name}</span>
@@ -754,33 +758,33 @@ function LayerList({ project, commit, select, moveLayer }: { project: Project; c
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="mb-3 border-b border-neutral-800 pb-3"><h2 className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-neutral-400"><AlignJustify size={13} />{title}</h2>{children}</section>;
+  return <section className="mb-4 border-b border-slate-200 pb-4"><h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-slate-500"><AlignJustify size={13} />{title}</h2>{children}</section>;
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><input className="control" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="mb-2 block"><span className="label">{label}</span><Input value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><textarea className="control h-20 resize-none py-2" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="mb-2 block"><span className="label">{label}</span><Textarea className="resize-none" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function NumberField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (value: number) => void; step?: number }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><input className="control" type="number" step={step} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+  return <label className="mb-2 block"><span className="label">{label}</span><Input type="number" step={step} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(Number(event.target.value))} /></label>;
 }
 
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><div className="flex gap-2"><input className="h-8 w-10 rounded border border-neutral-700 bg-neutral-950" type="color" value={value === "none" ? "#000000" : value} onChange={(event) => onChange(event.target.value)} /><input className="control" value={value} onChange={(event) => onChange(event.target.value)} /></div></label>;
+  return <label className="mb-2 block"><span className="label">{label}</span><div className="flex gap-2"><Input className="h-9 w-11 p-1" type="color" value={value === "none" ? "#000000" : value} onChange={(event) => onChange(event.target.value)} /><Input value={value} onChange={(event) => onChange(event.target.value)} /></div></label>;
 }
 
 function Select({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><select className="control" value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+  return <label className="mb-2 block"><span className="label">{label}</span><SelectControl value={value} options={options} onValueChange={onChange} /></label>;
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="mb-2 flex items-center justify-between gap-3 text-sm text-neutral-200"><span>{label}</span><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-red-500" /></label>;
+  return <label className="mb-2 flex items-center justify-between gap-3 text-sm text-slate-700"><span>{label}</span><Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} /></label>;
 }
 
 function Slider({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}: {value.toFixed(2)}</span><input className="range" type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+  return <label className="mb-3 block"><span className="label">{label}: {value.toFixed(2)}</span><SliderControl value={value} min={min} max={max} step={step} onValueChange={onChange} /></label>;
 }

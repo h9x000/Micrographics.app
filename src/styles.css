@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family: Inter, "Arial Narrow", Arial, sans-serif;
-  background: #151515;
-  color: #f4f2ea;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 * {
@@ -28,12 +28,12 @@ textarea {
 }
 
 .checker {
-  background-color: #262626;
+  background-color: #e2e8f0;
   background-image:
-    linear-gradient(45deg, #1a1a1a 25%, transparent 25%),
-    linear-gradient(-45deg, #1a1a1a 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #1a1a1a 75%),
-    linear-gradient(-45deg, transparent 75%, #1a1a1a 75%);
+    linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
+    linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
+    linear-gradient(-45deg, transparent 75%, #cbd5e1 75%);
   background-position:
     0 0,
     0 8px,
@@ -43,25 +43,25 @@ textarea {
 }
 
 .control {
-  @apply h-8 w-full rounded border border-neutral-700 bg-neutral-950 px-2 text-sm text-neutral-100 outline-none focus:border-red-400;
+  @apply h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-950 shadow-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200;
 }
 
 .label {
-  @apply mb-1 block text-[10px] font-bold uppercase tracking-widest text-neutral-400;
+  @apply mb-1.5 block text-[10px] font-semibold uppercase text-slate-500;
 }
 
 .tool-button {
-  @apply inline-flex h-8 items-center justify-center gap-1 rounded border border-neutral-700 bg-neutral-900 px-2 text-xs font-bold uppercase text-neutral-100 hover:border-red-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-9 items-center justify-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold uppercase text-slate-900 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .icon-button {
-  @apply inline-flex h-8 w-8 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-neutral-100 hover:border-red-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-900 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .panel {
-  @apply border-neutral-800 bg-neutral-950;
+  @apply border-slate-200 bg-white;
 }
 
 .range {
-  @apply h-2 w-full accent-red-500;
+  @apply h-2 w-full accent-slate-950;
 }
