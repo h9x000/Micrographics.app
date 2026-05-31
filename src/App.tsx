@@ -24,11 +24,12 @@ import {
 } from "lucide-react";
 import React, { ChangeEvent, PointerEvent, forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { exportPng, exportSvg, copySvg, download } from "./exporters";
+import { fallbackFontFamily, readFontMetadata } from "./fontMetadata";
 import { createProject, makeOverlay, regenerate, templates } from "./generator";
 import { adjustmentFor, transformedText } from "./humanize";
 import { code, createRng } from "./random";
 import { loadLocal, saveLocal } from "./storage";
-import { FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies } from "./types";
+import { FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies, fontRoleInternalFamilies } from "./types";
 
 type History = { past: Project[]; present: Project; future: Project[] };
 type DragState = { id: string; x: number; y: number; startX: number; startY: number; before: Project } | null;
@@ -156,7 +157,7 @@ function App() {
       .map(({ role }) => {
         const uploaded = project.fonts?.[role];
         if (!uploaded) return "";
-        const family = role === "normal" ? "MicroFontNormal" : role === "mono" ? "MicroFontMono" : role === "wide" ? "MicroFontWide" : "MicroFontCondensed";
+        const family = fontRoleInternalFamilies[role];
         return `@font-face{font-family:"${family}";src:url("${uploaded.dataUrl}")}`;
       })
       .join("\n");
@@ -336,26 +337,30 @@ function App() {
     event.target.value = "";
   }
 
-  function importFont(event: ChangeEvent<HTMLInputElement>) {
+  async function importFont(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      commit((p) => ({
-        ...p,
-        fonts: {
-          normal: p.fonts?.normal ?? null,
-          mono: p.fonts?.mono ?? null,
-          wide: p.fonts?.wide ?? null,
-          condensed: p.fonts?.condensed ?? null,
-          [pendingFontRole]: { name: file.name, dataUrl }
-        }
-      }));
-      const label = fontRoles.find((item) => item.role === pendingFontRole)?.label ?? pendingFontRole;
-      window.alert(`${label} font uploaded: ${file.name}`);
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const metadata = file.name.toLowerCase().endsWith(".woff2")
+      ? { family: fallbackFontFamily(file.name) }
+      : readFontMetadata(await file.arrayBuffer(), file.name);
+    commit((p) => ({
+      ...p,
+      fonts: {
+        normal: p.fonts?.normal ?? null,
+        mono: p.fonts?.mono ?? null,
+        wide: p.fonts?.wide ?? null,
+        condensed: p.fonts?.condensed ?? null,
+        [pendingFontRole]: { name: file.name, dataUrl, ...metadata }
+      }
+    }));
+    const label = fontRoles.find((item) => item.role === pendingFontRole)?.label ?? pendingFontRole;
+    window.alert(`${label} font uploaded: ${metadata.family ?? file.name}`);
     event.target.value = "";
   }
 
@@ -477,9 +482,9 @@ function App() {
       <aside className="panel row-span-2 overflow-y-auto border-l p-3">
         <Section title="Export">
           <div className="grid grid-cols-2 gap-2">
-            <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic")}><Download size={14} />SVG</button>
+            <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG</button>
             <button className="tool-button" onClick={() => svgRef.current && exportPng(svgRef.current, project, pngScale, transparentPng, includeBg)}><Download size={14} />PNG</button>
-            <button className="tool-button" onClick={() => svgRef.current && copySvg(svgRef.current)}><Copy size={14} />Copy SVG</button>
+            <button className="tool-button" onClick={() => svgRef.current && copySvg(svgRef.current, project)}><Copy size={14} />Copy SVG</button>
             <button className="tool-button" onClick={saveProjectJson}><FileJson size={14} />JSON</button>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">

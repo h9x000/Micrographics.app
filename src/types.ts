@@ -54,6 +54,9 @@ export type FontRole = "normal" | "mono" | "wide" | "condensed";
 export interface UploadedFont {
   name: string;
   dataUrl: string;
+  family?: string;
+  fullName?: string;
+  postScriptName?: string;
 }
 
 export interface CanvasSettings {
@@ -179,6 +182,13 @@ export const fontRoleFamilies: Record<FontRole, string> = {
   mono: "\"MicroFontMono\", \"Courier New\", monospace",
   wide: "\"MicroFontWide\", \"Arial Black\", Arial, sans-serif",
   condensed: "\"MicroFontCondensed\", \"Arial Narrow\", Arial, sans-serif"
+};
+
+export const fontRoleInternalFamilies: Record<FontRole, string> = {
+  normal: "MicroFontNormal",
+  mono: "MicroFontMono",
+  wide: "MicroFontWide",
+  condensed: "MicroFontCondensed"
 };
 
 export const fontStacks = {
