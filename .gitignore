@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.pnpm-store/
+.pnpm-home/
+.pnpm-state/
+.pnpm-cache/
+.pnpm-config/
+pnpm.cjs
+pnpm.tgz
+pnpm-package/
+.pnpm-debug.log
