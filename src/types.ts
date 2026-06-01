@@ -166,7 +166,9 @@ export interface CustomSvgAsset {
 }
 
 export interface CustomLibrarySettings {
-  enabled: boolean;
+  enabled?: boolean;
+  useCustomText: boolean;
+  useCustomSvg: boolean;
   texts: string[];
   svgs: CustomSvgAsset[];
 }
@@ -186,12 +188,6 @@ export interface HumanizeSettings {
 export interface GeneratorSettings {
   seed: string;
   template: TemplateId;
-  batchCount: number;
-  overlayCount: number;
-  overlayOffset: number;
-  overlayOpacity: number;
-  overlayColorVariation: number;
-  overlayRotation: number;
   typeMin: number;
   typeMax: number;
   nonTypeMin: number;

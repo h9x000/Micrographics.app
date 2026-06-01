@@ -1,4 +1,4 @@
-import { CanvasSettings, CustomSvgElement, ElementBase, FontRole, GraphicElement, IconKind, Project, ShapeKind, TemplateId, TextElement, fontRoleFamilies, isoPictogramKinds } from "./types";
+import { CanvasSettings, CustomSvgAsset, CustomSvgElement, ElementBase, FontRole, GraphicElement, IconKind, Project, ShapeKind, TemplateId, TextElement, fontRoleFamilies, isoPictogramKinds } from "./types";
 import { Rng, between, code, createRng, int, pick } from "./random";
 
 const white = "#ffffff";
@@ -271,10 +271,9 @@ function paletteFor(seed: string, canvas: CanvasSettings) {
   return palette;
 }
 
-function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settings?: Partial<Project["generator"]>): { type: Array<() => GraphicElement | null>; nonType: Array<() => GraphicElement | null> } {
+function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settings?: Partial<Project["generator"]>, occupied: Rect[] = []): { type: Array<() => GraphicElement | null>; nonType: Array<() => GraphicElement | null> } {
   const m = metadata(rng);
   const palette = paletteFor(seed, canvas);
-  const occupied: Rect[] = [];
   const rotations = rotationOptions(settings?.allow45Rotation ?? true);
   const nonTypeStrokeWidth = normalizeStrokeWidth(settings?.nonTypeStrokeWidth ?? 1.5);
   const preventOverlap = settings?.preventOverlap ?? false;
@@ -468,7 +467,7 @@ function randomComposition(seed: string, template: TemplateId, settings?: Partia
   return { canvas, elements: selected };
 }
 
-function customComposition(seed: string, project: Project): { canvas: CanvasSettings; elements: GraphicElement[] } {
+function mixedComposition(seed: string, project: Project): { canvas: CanvasSettings; elements: GraphicElement[] } {
   const rng = createRng(seed);
   const canvas = baseCanvas(768, 256);
   const occupied: Rect[] = [];
@@ -477,22 +476,11 @@ function customComposition(seed: string, project: Project): { canvas: CanvasSett
   const makeSlot = (w: number, h: number, loose = false) => randomSlot(rng, canvas, w, h, occupied, loose, preventOverlap);
   const textItems = project.customLibrary?.texts.filter((item) => item.trim()) ?? [];
   const svgItems = project.customLibrary?.svgs ?? [];
-  const defaultTypeMin = Math.min(1, textItems.length);
-  const defaultTypeMax = textItems.length;
-  const defaultNonTypeMin = Math.min(1, svgItems.length);
-  const defaultNonTypeMax = svgItems.length;
-  const typeMin = Math.min(textItems.length, Math.max(0, Math.floor(project.generator.typeMin ?? defaultTypeMin)));
-  const typeMax = Math.min(textItems.length, Math.max(typeMin, Math.floor(project.generator.typeMax ?? defaultTypeMax)));
-  const nonTypeMin = Math.min(svgItems.length, Math.max(0, Math.floor(project.generator.nonTypeMin ?? defaultNonTypeMin)));
-  const nonTypeMax = Math.min(svgItems.length, Math.max(nonTypeMin, Math.floor(project.generator.nonTypeMax ?? defaultNonTypeMax)));
-  const textCount = textItems.length ? int(rng, typeMin, typeMax) : 0;
-  const svgCount = svgItems.length ? int(rng, nonTypeMin, nonTypeMax) : 0;
-  const textPool = shuffle(rng, textItems);
-  const svgPool = shuffle(rng, svgItems);
-  const elements: GraphicElement[] = [];
+  const useCustomText = project.customLibrary?.useCustomText ?? project.customLibrary?.enabled ?? false;
+  const useCustomSvg = project.customLibrary?.useCustomSvg ?? project.customLibrary?.enabled ?? false;
+  const builtIn = componentLibrary(rng, canvas, seed, project.generator, occupied);
 
-  for (let i = 0; i < textCount; i += 1) {
-    const value = textPool[i % textPool.length];
+  const customTextFactory = (value: string) => () => {
     const fontSize = pick(rng, [10, 12, 14, 18, 24, 30]);
     const width = Math.max(72, Math.min(480, estimateTextLineWidth(value, {
       ...text(rng, "measure", value, 0, 0, 1, 1, fontSize, 800, "normal"),
@@ -507,24 +495,40 @@ function customComposition(seed: string, project: Project): { canvas: CanvasSett
     element.rotation = rotation;
     const slotSize = preventOverlap ? rotatedSlotSize(width, height, rotation) : { width, height, offsetX: 0, offsetY: 0 };
     const slot = makeSlot(slotSize.width, slotSize.height);
-    if (!slot) continue;
+    if (!slot) return null;
     element.x = slot.x + slotSize.offsetX;
     element.y = slot.y + slotSize.offsetY;
-    elements.push(clampElementToCanvas(element, canvas));
-  }
+    return clampElementToCanvas(element, canvas);
+  };
 
-  for (let i = 0; i < svgCount; i += 1) {
-    const asset = svgPool[i % svgPool.length];
+  const customSvgFactory = (asset: CustomSvgAsset) => () => {
     const width = pick(rng, [32, 40, 48, 56, 72, 88, 112, 144]);
     const height = Math.max(16, Math.round(width / Math.max(0.1, asset.aspectRatio || 1)));
     const rotation = pick(rng, rotations);
     const slotSize = preventOverlap ? rotatedSlotSize(width, height, rotation) : { width, height, offsetX: 0, offsetY: 0 };
     const slot = makeSlot(slotSize.width, slotSize.height);
-    if (!slot) continue;
+    if (!slot) return null;
     const element = customSvg(rng, `Custom SVG / ${asset.name}`, asset.id, asset.content, asset.viewBox, slot.x + slotSize.offsetX, slot.y + slotSize.offsetY, width, height, normalizeStrokeWidth(project.generator.nonTypeStrokeWidth ?? 1.5));
     element.rotation = rotation;
-    elements.push(clampElementToCanvas(element, canvas));
-  }
+    return clampElementToCanvas(element, canvas);
+  };
+
+  const typeLibrary = useCustomText ? textItems.map(customTextFactory) : builtIn.type;
+  const nonTypeLibrary = useCustomSvg ? svgItems.map(customSvgFactory) : builtIn.nonType;
+  const defaultTypeMin = useCustomText ? Math.min(1, typeLibrary.length) : 10;
+  const defaultTypeMax = useCustomText ? typeLibrary.length : 18;
+  const defaultNonTypeMin = useCustomSvg ? Math.min(1, nonTypeLibrary.length) : 18;
+  const defaultNonTypeMax = useCustomSvg ? nonTypeLibrary.length : 30;
+  const typeMin = Math.min(typeLibrary.length, Math.max(0, Math.floor(project.generator.typeMin ?? defaultTypeMin)));
+  const typeMax = Math.min(typeLibrary.length, Math.max(typeMin, Math.floor(project.generator.typeMax ?? defaultTypeMax)));
+  const nonTypeMin = Math.min(nonTypeLibrary.length, Math.max(0, Math.floor(project.generator.nonTypeMin ?? defaultNonTypeMin)));
+  const nonTypeMax = Math.min(nonTypeLibrary.length, Math.max(nonTypeMin, Math.floor(project.generator.nonTypeMax ?? defaultNonTypeMax)));
+  const typeCount = typeLibrary.length ? int(rng, typeMin, typeMax) : 0;
+  const nonTypeCount = nonTypeLibrary.length ? int(rng, nonTypeMin, nonTypeMax) : 0;
+  const elements = [
+    ...shuffle(rng, typeLibrary).slice(0, typeCount),
+    ...shuffle(rng, nonTypeLibrary).slice(0, nonTypeCount)
+  ].map((make) => make()).filter((element): element is GraphicElement => Boolean(element));
 
   return { canvas, elements };
 }
@@ -564,12 +568,6 @@ export function createProject(seed = "micro-001", template: TemplateId = serialT
     generator: {
       seed,
       template: serialTemplate,
-      batchCount: 6,
-      overlayCount: 4,
-      overlayOffset: 18,
-      overlayOpacity: 0.32,
-      overlayColorVariation: 0,
-      overlayRotation: 45,
       typeMin: 10,
       typeMax: 18,
       nonTypeMin: 18,
@@ -581,7 +579,8 @@ export function createProject(seed = "micro-001", template: TemplateId = serialT
       preventOverlap: false
     },
     customLibrary: {
-      enabled: false,
+      useCustomText: false,
+      useCustomSvg: false,
       texts: [],
       svgs: []
     },
@@ -595,8 +594,9 @@ export function createProject(seed = "micro-001", template: TemplateId = serialT
 }
 
 export function regenerate(project: Project, seed: string, template = serialTemplate): Project {
-  if (project.customLibrary?.enabled) {
-    const built = customComposition(seed, project);
+  const useCustomSources = Boolean(project.customLibrary?.useCustomText || project.customLibrary?.useCustomSvg || project.customLibrary?.enabled);
+  if (useCustomSources) {
+    const built = mixedComposition(seed, project);
     return {
       ...project,
       canvas: built.canvas,
@@ -627,37 +627,4 @@ export function regenerate(project: Project, seed: string, template = serialTemp
     humanize: { ...project.humanize, enabled: false, seed },
     generator: { ...project.generator, ...settings, seed, template: serialTemplate }
   };
-}
-
-export function makeOverlay(project: Project): GraphicElement[] {
-  const rng = createRng(`${project.generator.seed}-overlay`);
-  const overlays: GraphicElement[] = [];
-  const occupied = project.generator.preventOverlap ? project.elements.filter((el) => el.visible).map(elementRect) : [];
-  for (let i = 0; i < project.generator.overlayCount; i += 1) {
-    const seed = `${project.generator.seed}-${i}-${int(rng, 1, 9999)}`;
-    const built = project.customLibrary?.enabled ? customComposition(seed, project) : templates[serialTemplate].build(seed, project.generator);
-    const dx = between(rng, -project.generator.overlayOffset, project.generator.overlayOffset);
-    const dy = between(rng, -project.generator.overlayOffset, project.generator.overlayOffset);
-    const rot = pick(rng, rotationOptions(project.generator.allow45Rotation));
-    built.elements.forEach((el) => {
-      const overlay = clampElementToCanvas({
-        ...el,
-        id: id(`overlay-${i}`, rng),
-        name: `Overlay ${i + 1} / ${el.name}`,
-        x: el.x + dx,
-        y: el.y + dy,
-        rotation: el.rotation + rot,
-        opacity: Math.min(el.opacity, project.generator.overlayOpacity),
-        fill: el.fill === "none" ? "none" : black,
-        stroke: el.stroke === "none" ? "none" : black,
-        strokeWidth: normalizeStrokeWidth(el.strokeWidth)
-      }, project.canvas);
-      const rect = elementRect(overlay);
-      if (!project.generator.preventOverlap || occupied.every((other) => !overlaps(rect, other, 0))) {
-        occupied.push(rect);
-        overlays.push(overlay);
-      }
-    });
-  }
-  return overlays;
 }

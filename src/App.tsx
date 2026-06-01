@@ -26,12 +26,12 @@ import React, { ChangeEvent, PointerEvent, forwardRef, useEffect, useLayoutEffec
 import { Input, Textarea, Checkbox, SelectControl, SliderControl } from "./components/ui/form";
 import { exportPng, exportStaticSvg, exportSvg, copySvg } from "./exporters";
 import { fallbackFontFamily, readFontMetadata } from "./fontMetadata";
-import { createProject, makeOverlay, regenerate } from "./generator";
+import { createProject, regenerate } from "./generator";
 import { adjustmentFor, transformedText } from "./humanize";
 import { renderIsoPictogram } from "./isoPictograms";
 import { code, createRng } from "./random";
 import { loadLocal, saveLocal } from "./storage";
-import { CustomSvgAsset, CustomSvgElement, FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies, fontRoleInternalFamilies, isoPictogramKinds } from "./types";
+import { CustomLibrarySettings, CustomSvgAsset, CustomSvgElement, FontRole, GraphicElement, IconElement, Project, ShapeElement, TextElement, fontRoleFamilies, fontRoleInternalFamilies, isoPictogramKinds } from "./types";
 
 type History = { past: Project[]; present: Project; future: Project[] };
 type DragState = { id: string; x: number; y: number; startX: number; startY: number; before: Project } | null;
@@ -240,12 +240,13 @@ function sanitizeSvgAsset(name: string, source: string): CustomSvgAsset | null {
 }
 
 function cleanProject(project: Project): Project {
+  const legacyCustomEnabled = project.customLibrary?.enabled ?? false;
   return resolveProjectOverlaps({
     ...project,
     palette: "blackWhite",
     customPalette: ["#111111", "#ffffff", "#111111"],
     generator: {
-      ...project.generator,
+      seed: project.generator?.seed ?? "micro-001",
       typeMin: project.generator?.typeMin ?? 10,
       typeMax: project.generator?.typeMax ?? 18,
       nonTypeMin: project.generator?.nonTypeMin ?? 18,
@@ -258,7 +259,8 @@ function cleanProject(project: Project): Project {
       preventOverlap: project.generator?.preventOverlap ?? false
     },
     customLibrary: {
-      enabled: project.customLibrary?.enabled ?? false,
+      useCustomText: project.customLibrary?.useCustomText ?? legacyCustomEnabled,
+      useCustomSvg: project.customLibrary?.useCustomSvg ?? legacyCustomEnabled,
       texts: (project.customLibrary?.texts ?? []).map((text) => text.trim()).filter(Boolean),
       svgs: project.customLibrary?.svgs ?? []
     },
@@ -289,6 +291,17 @@ function cleanProject(project: Project): Project {
       .map((element) => ({ ...element, cornerRadius: 0 }))
       .filter((element) => !["label plate", "backplate field", "square sticker", "white label", "red catalog field", "warning plate", "shipping label", "manufacturer tag"].includes(element.name.toLowerCase()))
   });
+}
+
+function customLibraryFor(project: Project, patch: Partial<CustomLibrarySettings> = {}): CustomLibrarySettings {
+  const legacyCustomEnabled = project.customLibrary?.enabled ?? false;
+  return {
+    useCustomText: project.customLibrary?.useCustomText ?? legacyCustomEnabled,
+    useCustomSvg: project.customLibrary?.useCustomSvg ?? legacyCustomEnabled,
+    texts: project.customLibrary?.texts ?? [],
+    svgs: project.customLibrary?.svgs ?? [],
+    ...patch
+  };
 }
 
 function App() {
@@ -466,7 +479,7 @@ function App() {
 
   function updateCustomTexts(raw: string) {
     const texts = raw.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-    commit((p) => ({ ...p, customLibrary: { enabled: p.customLibrary?.enabled ?? false, svgs: p.customLibrary?.svgs ?? [], texts } }));
+    commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { texts }) }));
   }
 
   function addCustomText(value: string) {
@@ -480,11 +493,7 @@ function App() {
       });
       return {
         ...p,
-        customLibrary: {
-          enabled: p.customLibrary?.enabled ?? true,
-          svgs: p.customLibrary?.svgs ?? [],
-          texts: nextTexts
-        }
+        customLibrary: customLibraryFor(p, { texts: nextTexts })
       };
     });
   }
@@ -492,37 +501,15 @@ function App() {
   function removeCustomText(index: number) {
     commit((p) => ({
       ...p,
-      customLibrary: {
-        enabled: p.customLibrary?.enabled ?? false,
-        svgs: p.customLibrary?.svgs ?? [],
-        texts: (p.customLibrary?.texts ?? []).filter((_, itemIndex) => itemIndex !== index)
-      }
+      customLibrary: customLibraryFor(p, { texts: (p.customLibrary?.texts ?? []).filter((_, itemIndex) => itemIndex !== index) })
     }));
   }
 
   function removeCustomSvg(id: string) {
     commit((p) => ({
       ...p,
-      customLibrary: {
-        enabled: p.customLibrary?.enabled ?? false,
-        texts: p.customLibrary?.texts ?? [],
-        svgs: (p.customLibrary?.svgs ?? []).filter((asset) => asset.id !== id)
-      }
+      customLibrary: customLibraryFor(p, { svgs: (p.customLibrary?.svgs ?? []).filter((asset) => asset.id !== id) })
     }));
-  }
-
-  function generateBatch(project: Project): Project {
-    const elements = Array.from({ length: project.generator.batchCount }, (_, i) => {
-      const batch = regenerate(project, `${project.generator.seed}-${i}`);
-      return batch.elements.map((el) => ({
-        ...el,
-        id: `${el.id}-batch-${i}`,
-        x: el.x + (i % 3) * 32,
-        y: el.y + Math.floor(i / 3) * 24,
-        opacity: 0.55
-      } as GraphicElement));
-    }).flat();
-    return resolveProjectOverlaps({ ...project, generator: { ...project.generator, seed: `batch-${Date.now()}`, template: "serial" }, elements });
   }
 
   function deleteSelected() {
@@ -672,11 +659,7 @@ function App() {
     if (assets.length) {
       commit((p) => ({
         ...p,
-        customLibrary: {
-          enabled: true,
-          texts: p.customLibrary?.texts ?? [],
-          svgs: [...(p.customLibrary?.svgs ?? []), ...assets]
-        }
+        customLibrary: customLibraryFor(p, { svgs: [...(p.customLibrary?.svgs ?? []), ...assets] })
       }));
       setBottomPanel("custom");
     }
@@ -745,17 +728,11 @@ function App() {
       <aside className="panel row-span-2 overflow-y-auto border-r p-3">
         <Header project={project} commit={commit} undo={undo} redo={redo} canUndo={history.past.length > 0} canRedo={history.future.length > 0} />
         <Section title="Serial Sticker">
-          <div className="mt-2 grid grid-cols-3 gap-2">
+          <div className="mt-2 grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => commit((p) => regenerate(p, `${p.generator.seed}-${Date.now()}`))}><Shuffle size={14} />Generate</button>
-            <button className="tool-button" onClick={() => commit((p) => resolveProjectOverlaps({ ...p, elements: [...p.elements, ...makeOverlay(p)] }))}><Layers size={14} />Overlay</button>
             <button className="tool-button" onClick={() => commit(() => cleanProject(createProject("micro-001", "serial")))}><RotateCcw size={14} />Reset</button>
           </div>
           <Field label="Seed" value={project.generator.seed} onChange={(seed) => silent((p) => ({ ...p, generator: { ...p.generator, seed }, humanize: { ...p.humanize, seed } }))} />
-          <div className="grid grid-cols-2 gap-2">
-            <NumberField label="Overlay count" value={project.generator.overlayCount} onChange={(overlayCount) => commit((p) => ({ ...p, generator: { ...p.generator, overlayCount } }))} />
-            <NumberField label="Offset range" value={project.generator.overlayOffset} onChange={(overlayOffset) => commit((p) => ({ ...p, generator: { ...p.generator, overlayOffset } }))} />
-            <NumberField label="Overlay opacity" value={project.generator.overlayOpacity} step={0.05} onChange={(overlayOpacity) => commit((p) => ({ ...p, generator: { ...p.generator, overlayOpacity } }))} />
-          </div>
           <div className="grid grid-cols-2 gap-2">
             <NumberField label="Type min" value={project.generator.typeMin ?? 10} onChange={(typeMin) => commit((p) => ({ ...p, generator: { ...p.generator, typeMin, typeMax: Math.max(typeMin, p.generator.typeMax ?? typeMin) } }))} />
             <NumberField label="Type max" value={project.generator.typeMax ?? 18} onChange={(typeMax) => commit((p) => ({ ...p, generator: { ...p.generator, typeMax, typeMin: Math.min(typeMax, p.generator.typeMin ?? typeMax) } }))} />
@@ -767,10 +744,8 @@ function App() {
           <ColorField label="Highlight color" value={project.generator.textHighlightColor ?? "#000000"} onChange={(textHighlightColor) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlightColor } }))} />
           <Toggle label="45 degree rotation" checked={project.generator.allow45Rotation ?? true} onChange={(allow45Rotation) => commit((p) => ({ ...p, generator: { ...p.generator, allow45Rotation } }))} />
           <Toggle label="Prevent overlap" checked={project.generator.preventOverlap ?? false} onChange={(preventOverlap) => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, preventOverlap } }))} />
-          <div className="grid grid-cols-2 gap-2">
-            <NumberField label="Batch count" value={project.generator.batchCount} onChange={(batchCount) => commit((p) => ({ ...p, generator: { ...p.generator, batchCount } }))} />
-            <button className="tool-button mt-5" onClick={() => commit(generateBatch)}>Batch</button>
-          </div>
+          <Toggle label="Custom Text" checked={project.customLibrary.useCustomText ?? false} onChange={(useCustomText) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomText }) }))} />
+          <Toggle label="Custom SVG" checked={project.customLibrary.useCustomSvg ?? false} onChange={(useCustomSvg) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomSvg }) }))} />
         </Section>
         <Section title="Humanize">
           <Toggle label="Humanize" checked={project.humanize.enabled} onChange={(enabled) => commit((p) => ({ ...p, humanize: { ...p.humanize, enabled } }))} />
@@ -1162,7 +1137,7 @@ function CustomLibraryPanel({
   removeCustomText: (index: number) => void;
   removeCustomSvg: (id: string) => void;
 }) {
-  const custom = project.customLibrary ?? { enabled: false, texts: [], svgs: [] };
+  const custom = project.customLibrary ?? { useCustomText: false, useCustomSvg: false, texts: [], svgs: [] };
   const [draft, setDraft] = useState("");
   const submitDraft = () => {
     addCustomText(draft);
@@ -1171,7 +1146,6 @@ function CustomLibraryPanel({
   return (
     <div className="grid flex-1 grid-cols-[320px_1fr_1fr] gap-3 overflow-auto p-3 text-xs">
       <div>
-        <Toggle label="Custom mode" checked={custom.enabled} onChange={(enabled) => commit((p) => ({ ...p, customLibrary: { enabled, texts: p.customLibrary?.texts ?? [], svgs: p.customLibrary?.svgs ?? [] } }))} />
         <div className="mb-2 block">
           <span className="label">Add custom word</span>
           <div className="grid grid-cols-[1fr_76px] gap-2">
