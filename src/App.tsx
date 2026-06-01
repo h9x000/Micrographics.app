@@ -1180,7 +1180,7 @@ function CustomLibraryPanel({
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " " || event.key === "Spacebar" || event.code === "Space") {
+                if (event.key === "Enter") {
                   event.preventDefault();
                   submitDraft();
                 }
