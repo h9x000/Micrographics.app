@@ -36,6 +36,7 @@ import { CustomSvgAsset, CustomSvgElement, FontRole, GraphicElement, IconElement
 type History = { past: Project[]; present: Project; future: Project[] };
 type DragState = { id: string; x: number; y: number; startX: number; startY: number; before: Project } | null;
 type BottomPanelView = "layers" | "custom";
+type PanelResizeState = { y: number; height: number } | null;
 
 const iconKinds: IconElement["icon"][] = ["warning", "lightning", "globe", "cert", "stamp", "polarity", "bin", "doubleSquare", "arrow", "dotMark", "logo", "crosshair", "chip", "waveform", "antenna", "terminal", "chevron", "bracket", "target", "caliper", "diode", "glyph", "circuitBlock", "waveBadge", "terminalStrip", "equipmentCluster", "safetyPanel", "handlingPanel", "vehicleDotMark", "certification_marks", "regulatory_marks", "safety_pictograms", "warning_decals", "automotive_glass_markings", "recycling_disposal_marks", "handling_shipping_symbols", "technical_instruction_icons", "ansi_safety_pictograms", "iso_7010_safety_signs", "ce_mark", "fcc_mark", "rohs_mark", "weee_mark", "ul_mark", "dot_as1_mark", "e_mark_symbols", ...isoPictogramKinds];
 const shapeKinds: ShapeElement["shape"][] = ["rect", "pill", "grid", "barcode"];
@@ -302,6 +303,8 @@ function App() {
   const [pendingFontRole, setPendingFontRole] = useState<FontRole>("normal");
   const [drag, setDrag] = useState<DragState>(null);
   const [bottomPanel, setBottomPanel] = useState<BottomPanelView>("layers");
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(220);
+  const [panelResize, setPanelResize] = useState<PanelResizeState>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const jsonRef = useRef<HTMLInputElement>(null);
@@ -406,6 +409,20 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  useEffect(() => {
+    if (!panelResize) return;
+    const onMove = (event: globalThis.PointerEvent) => {
+      setBottomPanelHeight(clampValue(panelResize.height + panelResize.y - event.clientY, 160, Math.min(560, window.innerHeight - 220)));
+    };
+    const onUp = () => setPanelResize(null);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [panelResize]);
+
   function undo() {
     setHistory((current) => {
       const previous = current.past[current.past.length - 1];
@@ -450,6 +467,26 @@ function App() {
   function updateCustomTexts(raw: string) {
     const texts = raw.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
     commit((p) => ({ ...p, customLibrary: { enabled: p.customLibrary?.enabled ?? false, svgs: p.customLibrary?.svgs ?? [], texts } }));
+  }
+
+  function addCustomText(value: string) {
+    const entries = value.split(/[\n,]+/).map((entry) => entry.trim()).filter(Boolean);
+    if (!entries.length) return;
+    commit((p) => {
+      const texts = p.customLibrary?.texts ?? [];
+      const nextTexts = [...texts];
+      entries.forEach((entry) => {
+        if (!nextTexts.includes(entry)) nextTexts.push(entry);
+      });
+      return {
+        ...p,
+        customLibrary: {
+          enabled: p.customLibrary?.enabled ?? true,
+          svgs: p.customLibrary?.svgs ?? [],
+          texts: nextTexts
+        }
+      };
+    });
   }
 
   function removeCustomText(index: number) {
@@ -704,7 +741,7 @@ function App() {
   const previewStyle = project.canvas.previewBackground === "black" ? { background: "#000000" } : project.canvas.previewBackground === "white" ? { background: "#ffffff" } : project.canvas.previewBackground === "custom" ? { background: project.canvas.previewCustom } : undefined;
 
   return (
-    <div className="grid h-screen grid-cols-[320px_1fr_344px] grid-rows-[1fr_220px] bg-white text-black">
+    <div className="grid h-screen grid-cols-[320px_1fr_344px] bg-white text-black" style={{ gridTemplateRows: `minmax(0, 1fr) ${bottomPanelHeight}px` }}>
       <aside className="panel row-span-2 overflow-y-auto border-r p-3">
         <Header project={project} commit={commit} undo={undo} redo={redo} canUndo={history.past.length > 0} canRedo={history.future.length > 0} />
         <Section title="Serial Sticker">
@@ -799,7 +836,8 @@ function App() {
         <SelectedPanel selected={selected} updateElement={updateElement} duplicateSelected={duplicateSelected} deleteSelected={deleteSelected} />
       </aside>
 
-      <section className="panel col-start-2 overflow-hidden border-t">
+      <section className="panel relative col-start-2 overflow-hidden border-t">
+        <div className="absolute inset-x-0 top-0 z-20 h-2 cursor-row-resize bg-black/0 hover:bg-black/20" onPointerDown={(event) => { event.preventDefault(); setPanelResize({ y: event.clientY, height: bottomPanelHeight }); }} />
         <BottomPanel
           active={bottomPanel}
           setActive={setBottomPanel}
@@ -809,6 +847,7 @@ function App() {
           moveLayer={moveLayer}
           customSvgRef={customSvgRef}
           importCustomSvg={importCustomSvg}
+          addCustomText={addCustomText}
           updateCustomTexts={updateCustomTexts}
           removeCustomText={removeCustomText}
           removeCustomSvg={removeCustomSvg}
@@ -1047,6 +1086,7 @@ function BottomPanel({
   moveLayer,
   customSvgRef,
   importCustomSvg,
+  addCustomText,
   updateCustomTexts,
   removeCustomText,
   removeCustomSvg
@@ -1059,6 +1099,7 @@ function BottomPanel({
   moveLayer: (id: string, dir: -1 | 1) => void;
   customSvgRef: React.RefObject<HTMLInputElement | null>;
   importCustomSvg: (event: ChangeEvent<HTMLInputElement>) => void;
+  addCustomText: (value: string) => void;
   updateCustomTexts: (raw: string) => void;
   removeCustomText: (index: number) => void;
   removeCustomSvg: (id: string) => void;
@@ -1077,6 +1118,7 @@ function BottomPanel({
           commit={commit}
           customSvgRef={customSvgRef}
           importCustomSvg={importCustomSvg}
+          addCustomText={addCustomText}
           updateCustomTexts={updateCustomTexts}
           removeCustomText={removeCustomText}
           removeCustomSvg={removeCustomSvg}
@@ -1106,6 +1148,7 @@ function CustomLibraryPanel({
   project,
   commit,
   customSvgRef,
+  addCustomText,
   updateCustomTexts,
   removeCustomText,
   removeCustomSvg
@@ -1114,15 +1157,38 @@ function CustomLibraryPanel({
   commit: (m: (p: Project) => Project) => void;
   customSvgRef: React.RefObject<HTMLInputElement | null>;
   importCustomSvg: (event: ChangeEvent<HTMLInputElement>) => void;
+  addCustomText: (value: string) => void;
   updateCustomTexts: (raw: string) => void;
   removeCustomText: (index: number) => void;
   removeCustomSvg: (id: string) => void;
 }) {
   const custom = project.customLibrary ?? { enabled: false, texts: [], svgs: [] };
+  const [draft, setDraft] = useState("");
+  const submitDraft = () => {
+    addCustomText(draft);
+    setDraft("");
+  };
   return (
     <div className="grid flex-1 grid-cols-[320px_1fr_1fr] gap-3 overflow-auto p-3 text-xs">
       <div>
         <Toggle label="Custom mode" checked={custom.enabled} onChange={(enabled) => commit((p) => ({ ...p, customLibrary: { enabled, texts: p.customLibrary?.texts ?? [], svgs: p.customLibrary?.svgs ?? [] } }))} />
+        <div className="mb-2 block">
+          <span className="label">Add custom word</span>
+          <div className="grid grid-cols-[1fr_76px] gap-2">
+            <Input
+              aria-label="Add custom word"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " " || event.key === "Spacebar" || event.code === "Space") {
+                  event.preventDefault();
+                  submitDraft();
+                }
+              }}
+            />
+            <button type="button" className="tool-button" onClick={submitDraft}>Add</button>
+          </div>
+        </div>
         <TextArea label="Custom words" value={custom.texts.join("\n")} onChange={updateCustomTexts} />
         <button className="tool-button w-full" onClick={() => customSvgRef.current?.click()}><Upload size={14} />Upload SVG</button>
       </div>
