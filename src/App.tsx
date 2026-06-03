@@ -701,8 +701,8 @@ function App() {
   const previewStyle = project.canvas.previewBackground === "black" ? { background: "#000000" } : project.canvas.previewBackground === "white" ? { background: "#ffffff" } : undefined;
 
   return (
-    <div className="grid h-screen grid-cols-[320px_1fr_344px] bg-white text-black" style={{ gridTemplateRows: `minmax(0, 1fr) ${bottomPanelHeight}px` }}>
-      <aside className="panel row-span-2 overflow-y-auto p-3">
+    <div className="grid h-screen grid-cols-[300px_1fr_320px] bg-white text-black" style={{ gridTemplateRows: `minmax(0, 1fr) ${bottomPanelHeight}px` }}>
+      <aside className="panel row-span-2 overflow-y-auto p-2">
         <Header project={project} commit={commit} />
         <Section>
           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -722,6 +722,9 @@ function App() {
             <Toggle label="Prevent overlap" checked={project.generator.preventOverlap ?? false} onChange={(preventOverlap) => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, preventOverlap } }))} />
             <Toggle label="Custom Text" checked={project.customLibrary.useCustomText ?? false} onChange={(useCustomText) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomText }) }))} />
             <Toggle label="Custom SVG" checked={project.customLibrary.useCustomSvg ?? false} onChange={(useCustomSvg) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomSvg }) }))} />
+            {fontRoles.map(({ role, label }) => (
+              <Toggle key={role} label={`Custom ${label}`} checked={cleanEnabledFonts(project.generator.enabledFonts).includes(role)} onChange={(enabled) => updateFontEnabled(role, enabled)} />
+            ))}
             <Toggle label="Text highlight" checked={project.generator.textHighlight ?? false} onChange={(textHighlight) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlight } }))} />
           </div>
           <ColorField label="Highlight color" value={project.generator.textHighlightColor ?? "#000000"} onChange={(textHighlightColor) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlightColor } }))} />
@@ -740,15 +743,15 @@ function App() {
       </aside>
 
       <main className={`relative overflow-hidden ${bgClass}`} style={previewStyle} onPointerMove={pointerMove} onPointerUp={pointerUp}>
-        <div className="absolute left-3 top-3 z-10 flex flex-col gap-2">
-          <div className="flex gap-2">
+        <div className="absolute left-2 top-2 z-10 flex flex-col gap-1.5">
+          <div className="flex gap-1.5">
             <button className="icon-button" title="Fit to screen" onClick={() => { setZoom(Math.min(1.1, Math.min((window.innerWidth - 760) / project.canvas.width, (window.innerHeight - 320) / project.canvas.height))); setPan({ x: 0, y: 0 }); }}><MousePointer2 size={15} /></button>
             <button className="icon-button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.15, z - 0.1))}><ZoomOut size={15} /></button>
             <button className="icon-button" title="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}><ZoomIn size={15} /></button>
             <button className="icon-button" title="Reset view" onClick={() => { setZoom(0.85); setPan({ x: 0, y: 0 }); }}><RotateCcw size={15} /></button>
-            <span className="rounded-none border border-black bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
+            <span className="rounded-none border border-black bg-white px-1.5 py-1 text-[11px] font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             <button className="icon-button" title="Undo" onClick={undo} disabled={history.past.length === 0}><Undo2 size={15} /></button>
             <button className="icon-button" title="Redo" onClick={redo} disabled={history.future.length === 0}><Redo2 size={15} /></button>
             <button className="icon-button" title="Save locally" onClick={() => saveLocal(project)}><Save size={15} /></button>
@@ -761,29 +764,26 @@ function App() {
         </div>
       </main>
 
-      <aside className="panel row-span-2 overflow-y-auto p-3">
+      <aside className="panel row-span-2 overflow-y-auto p-2">
         <Section>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG</button>
             <button className="tool-button" onClick={() => svgRef.current && exportStaticSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG STATIC</button>
             <button className="tool-button" onClick={() => svgRef.current && exportPng(svgRef.current, project, pngScale, true, false)}><Download size={14} />PNG 300 DPI</button>
             <button className="tool-button" onClick={() => svgRef.current && copySvg(svgRef.current, project)}><Copy size={14} />Copy SVG</button>
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
             <Select label="PNG scale" value={String(pngScale)} onChange={(value) => setPngScale(Number(value))} options={[1, 2, 3, 4, 8].map((n) => ({ value: String(n), label: `${n}x` }))} />
             <Select label="Preview bg" value={project.canvas.previewBackground} onChange={(previewBackground) => commit((p) => ({ ...p, canvas: { ...p.canvas, previewBackground: previewBackground as Project["canvas"]["previewBackground"] } }))} options={["black", "white", "checker"].map((value) => ({ value, label: value }))} />
           </div>
           <input ref={fileRef} className="hidden" type="file" accept=".ttf,.otf,.woff,.woff2" onChange={importFont} />
         </Section>
         <Section>
-          <div className="grid gap-3">
+          <div className="grid grid-cols-2 gap-1.5">
             {fontRoles.map(({ role, label }) => (
-              <div key={role} className="grid grid-cols-[48px_minmax(0,1fr)] items-start gap-3">
-                <Toggle label="Use" checked={cleanEnabledFonts(project.generator.enabledFonts).includes(role)} onChange={(enabled) => updateFontEnabled(role, enabled)} />
-                <div className="min-w-0">
-                  <button className="tool-button w-full justify-center" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
-                  <div className="mt-1 truncate text-xs text-neutral-600">{project.fonts?.[role]?.name ?? "not uploaded"}</div>
-                </div>
+              <div key={role} className="min-w-0">
+                <button className="tool-button w-full justify-center" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={13} />{label}</button>
+                <div className="mt-1 truncate text-[11px] text-neutral-600">{project.fonts?.[role]?.name ?? "not uploaded"}</div>
               </div>
             ))}
           </div>
@@ -811,8 +811,8 @@ export default App;
 function Header({ project, commit }: { project: Project; commit: (m: (p: Project) => Project) => void }) {
   return (
     <div className="mb-3 pb-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-lg font-black uppercase tracking-wide">Micrographics</h1>
+      <div className="mb-1.5 flex items-center justify-between">
+        <h1 className="text-base font-black uppercase tracking-wide">Micrographics</h1>
       </div>
       <Field label="Project name" value={project.name} onChange={(name) => commit((p) => ({ ...p, name }))} />
     </div>
@@ -1085,33 +1085,33 @@ function CustomLibraryPanel({
 }
 
 function Section({ children }: { children: React.ReactNode }) {
-  return <section className="mb-5 pb-1">{children}</section>;
+  return <section className="mb-3 pb-0.5">{children}</section>;
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><Input value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="mb-1.5 block"><span className="label">{label}</span><Input value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function TextArea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><Textarea className="resize-none" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+  return <label className="mb-1.5 block"><span className="label">{label}</span><Textarea className="resize-none" value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function NumberField({ label, value, onChange, step = 1 }: { label: string; value: number; onChange: (value: number) => void; step?: number }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><Input type="number" step={step} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+  return <label className="mb-1.5 block"><span className="label">{label}</span><Input type="number" step={step} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(Number(event.target.value))} /></label>;
 }
 
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><div className="flex gap-2"><Input className="h-9 w-11 p-1" type="color" value={value === "none" ? "#000000" : value} onChange={(event) => onChange(event.target.value)} /><Input value={value} onChange={(event) => onChange(event.target.value)} /></div></label>;
+  return <label className="mb-1.5 block"><span className="label">{label}</span><div className="flex gap-1.5"><Input className="h-8 w-9 p-1" type="color" value={value === "none" ? "#000000" : value} onChange={(event) => onChange(event.target.value)} /><Input value={value} onChange={(event) => onChange(event.target.value)} /></div></label>;
 }
 
 function Select({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (value: string) => void }) {
-  return <label className="mb-2 block"><span className="label">{label}</span><SelectControl value={value} options={options} onValueChange={onChange} /></label>;
+  return <label className="mb-1.5 block"><span className="label">{label}</span><SelectControl value={value} options={options} onValueChange={onChange} /></label>;
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="mb-2 flex items-center justify-between gap-3 text-sm text-black"><span>{label}</span><Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} /></label>;
+  return <label className="mb-1 flex items-center justify-between gap-2 text-xs text-black"><span>{label}</span><Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} /></label>;
 }
 
 function Slider({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="mb-3 block"><span className="label">{label}: {value.toFixed(2)}</span><SliderControl value={value} min={min} max={max} step={step} onValueChange={onChange} /></label>;
+  return <label className="mb-2 block"><span className="label">{label}: {value.toFixed(2)}</span><SliderControl value={value} min={min} max={max} step={step} onValueChange={onChange} /></label>;
 }

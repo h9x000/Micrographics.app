@@ -74,19 +74,19 @@ textarea {
 }
 
 .control {
-  @apply h-9 w-full rounded-none border border-black bg-white px-3 text-sm text-black shadow-sm outline-none focus:border-black focus:ring-2 focus:ring-neutral-300;
+  @apply h-8 w-full rounded-none border border-black bg-white px-2 text-xs text-black shadow-sm outline-none focus:border-black focus:ring-2 focus:ring-neutral-300;
 }
 
 .label {
-  @apply mb-1.5 block text-[10px] font-semibold uppercase text-neutral-600;
+  @apply mb-1 block text-[9px] font-semibold uppercase text-neutral-600;
 }
 
 .tool-button {
-  @apply inline-flex h-9 items-center justify-center gap-1 rounded-none border border-black bg-white px-3 text-xs font-semibold uppercase text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-8 items-center justify-center gap-1 rounded-none border border-black bg-white px-2 text-[11px] font-semibold uppercase text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .icon-button {
-  @apply inline-flex h-8 w-8 items-center justify-center rounded-none border border-black bg-white text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-7 w-7 items-center justify-center rounded-none border border-black bg-white text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .panel {
@@ -94,7 +94,7 @@ textarea {
 }
 
 .range {
-  @apply h-2 w-full accent-black;
+  @apply h-1.5 w-full accent-black;
 }
 
 @layer base {
