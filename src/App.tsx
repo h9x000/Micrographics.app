@@ -472,11 +472,6 @@ function App() {
     }));
   }
 
-  function updateCustomTexts(raw: string) {
-    const texts = raw.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-    commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { texts }) }));
-  }
-
   function addCustomText(value: string) {
     const entries = value.split(/[\n,]+/).map((entry) => entry.trim()).filter(Boolean);
     if (!entries.length) return;
@@ -708,7 +703,7 @@ function App() {
   return (
     <div className="grid h-screen grid-cols-[320px_1fr_344px] bg-white text-black" style={{ gridTemplateRows: `minmax(0, 1fr) ${bottomPanelHeight}px` }}>
       <aside className="panel row-span-2 overflow-y-auto border-r p-3">
-        <Header project={project} commit={commit} undo={undo} redo={redo} canUndo={history.past.length > 0} canRedo={history.future.length > 0} />
+        <Header project={project} commit={commit} />
         <Section>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => commit((p) => regenerate(p, `${p.generator.seed}-${Date.now()}`))}><Shuffle size={14} />Generate</button>
@@ -722,12 +717,14 @@ function App() {
             <NumberField label="Non-type max" value={project.generator.nonTypeMax ?? 30} onChange={(nonTypeMax) => commit((p) => ({ ...p, generator: { ...p.generator, nonTypeMax, nonTypeMin: Math.min(nonTypeMax, p.generator.nonTypeMin ?? nonTypeMax) } }))} />
           </div>
           <Slider label="Non-type stroke" value={normalizeStrokeWidth(project.generator.nonTypeStrokeWidth ?? 1.5)} min={1} max={5} step={0.25} onChange={updateNonTypeStrokeWidth} />
-          <Toggle label="Text highlight" checked={project.generator.textHighlight ?? false} onChange={(textHighlight) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlight } }))} />
+          <div className="space-y-1">
+            <Toggle label="45 degree rotation" checked={project.generator.allow45Rotation ?? true} onChange={(allow45Rotation) => commit((p) => ({ ...p, generator: { ...p.generator, allow45Rotation } }))} />
+            <Toggle label="Prevent overlap" checked={project.generator.preventOverlap ?? false} onChange={(preventOverlap) => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, preventOverlap } }))} />
+            <Toggle label="Custom Text" checked={project.customLibrary.useCustomText ?? false} onChange={(useCustomText) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomText }) }))} />
+            <Toggle label="Custom SVG" checked={project.customLibrary.useCustomSvg ?? false} onChange={(useCustomSvg) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomSvg }) }))} />
+            <Toggle label="Text highlight" checked={project.generator.textHighlight ?? false} onChange={(textHighlight) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlight } }))} />
+          </div>
           <ColorField label="Highlight color" value={project.generator.textHighlightColor ?? "#000000"} onChange={(textHighlightColor) => commit((p) => ({ ...p, generator: { ...p.generator, textHighlightColor } }))} />
-          <Toggle label="45 degree rotation" checked={project.generator.allow45Rotation ?? true} onChange={(allow45Rotation) => commit((p) => ({ ...p, generator: { ...p.generator, allow45Rotation } }))} />
-          <Toggle label="Prevent overlap" checked={project.generator.preventOverlap ?? false} onChange={(preventOverlap) => commit((p) => resolveProjectOverlaps({ ...p, generator: { ...p.generator, preventOverlap } }))} />
-          <Toggle label="Custom Text" checked={project.customLibrary.useCustomText ?? false} onChange={(useCustomText) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomText }) }))} />
-          <Toggle label="Custom SVG" checked={project.customLibrary.useCustomSvg ?? false} onChange={(useCustomSvg) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomSvg }) }))} />
         </Section>
         <Section>
           <Toggle label="Humanize" checked={project.humanize.enabled} onChange={(enabled) => commit((p) => ({ ...p, humanize: { ...p.humanize, enabled } }))} />
@@ -743,12 +740,19 @@ function App() {
       </aside>
 
       <main className={`relative overflow-hidden ${bgClass}`} style={previewStyle} onPointerMove={pointerMove} onPointerUp={pointerUp}>
-        <div className="absolute left-3 top-3 z-10 flex gap-2">
-          <button className="icon-button" title="Fit to screen" onClick={() => { setZoom(Math.min(1.1, Math.min((window.innerWidth - 760) / project.canvas.width, (window.innerHeight - 320) / project.canvas.height))); setPan({ x: 0, y: 0 }); }}><MousePointer2 size={15} /></button>
-          <button className="icon-button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.15, z - 0.1))}><ZoomOut size={15} /></button>
-          <button className="icon-button" title="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}><ZoomIn size={15} /></button>
-          <button className="icon-button" title="Reset view" onClick={() => { setZoom(0.85); setPan({ x: 0, y: 0 }); }}><RotateCcw size={15} /></button>
-          <span className="rounded-none border border-black bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
+        <div className="absolute left-3 top-3 z-10 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <button className="icon-button" title="Fit to screen" onClick={() => { setZoom(Math.min(1.1, Math.min((window.innerWidth - 760) / project.canvas.width, (window.innerHeight - 320) / project.canvas.height))); setPan({ x: 0, y: 0 }); }}><MousePointer2 size={15} /></button>
+            <button className="icon-button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.15, z - 0.1))}><ZoomOut size={15} /></button>
+            <button className="icon-button" title="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}><ZoomIn size={15} /></button>
+            <button className="icon-button" title="Reset view" onClick={() => { setZoom(0.85); setPan({ x: 0, y: 0 }); }}><RotateCcw size={15} /></button>
+            <span className="rounded-none border border-black bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
+          </div>
+          <div className="flex gap-2">
+            <button className="icon-button" title="Undo" onClick={undo} disabled={history.past.length === 0}><Undo2 size={15} /></button>
+            <button className="icon-button" title="Redo" onClick={redo} disabled={history.future.length === 0}><Redo2 size={15} /></button>
+            <button className="icon-button" title="Save locally" onClick={() => saveLocal(project)}><Save size={15} /></button>
+          </div>
         </div>
         <div className="flex h-full items-center justify-center" style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
           <div className="shadow-2xl shadow-black/50" style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom }}>
@@ -772,16 +776,16 @@ function App() {
           <input ref={fileRef} className="hidden" type="file" accept=".ttf,.otf,.woff,.woff2" onChange={importFont} />
         </Section>
         <Section>
-          <div className="grid gap-2">
+          <div className="grid gap-3">
             {fontRoles.map(({ role, label }) => (
-              <div key={role} className="grid grid-cols-[1fr_92px] items-center gap-2">
-                <button className="tool-button justify-start" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
+              <div key={role} className="grid grid-cols-[76px_1fr] items-start gap-3">
                 <Toggle label="Use" checked={cleanEnabledFonts(project.generator.enabledFonts).includes(role)} onChange={(enabled) => updateFontEnabled(role, enabled)} />
+                <div>
+                  <button className="tool-button w-full justify-center" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
+                  <div className="mt-1 truncate text-xs text-neutral-600">{project.fonts?.[role]?.name ?? "not uploaded"}</div>
+                </div>
               </div>
             ))}
-          </div>
-          <div className="mt-2 space-y-1 text-xs text-neutral-600">
-            {fontRoles.map(({ role, label }) => <div key={role}>{label}: {project.fonts?.[role]?.name ?? "not uploaded"}</div>)}
           </div>
         </Section>
         <SelectedPanel selected={selected} updateElement={updateElement} duplicateSelected={duplicateSelected} deleteSelected={deleteSelected} />
@@ -791,10 +795,8 @@ function App() {
         <div className="absolute inset-x-0 top-0 z-20 h-2 cursor-row-resize bg-black/0 hover:bg-black/20" onPointerDown={(event) => { event.preventDefault(); setPanelResize({ y: event.clientY, height: bottomPanelHeight }); }} />
         <CustomLibraryPanel
           project={project}
-          commit={commit}
           customSvgRef={customSvgRef}
           addCustomText={addCustomText}
-          updateCustomTexts={updateCustomTexts}
           removeCustomText={removeCustomText}
           removeCustomSvg={removeCustomSvg}
         />
@@ -806,16 +808,11 @@ function App() {
 
 export default App;
 
-function Header({ project, commit, undo, redo, canUndo, canRedo }: { project: Project; commit: (m: (p: Project) => Project) => void; undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean }) {
+function Header({ project, commit }: { project: Project; commit: (m: (p: Project) => Project) => void }) {
   return (
     <div className="mb-3 border-b border-black pb-3">
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-lg font-black uppercase tracking-wide">Micrographics</h1>
-        <div className="flex gap-1">
-          <button className="icon-button" title="Undo" onClick={undo} disabled={!canUndo}><Undo2 size={15} /></button>
-          <button className="icon-button" title="Redo" onClick={redo} disabled={!canRedo}><Redo2 size={15} /></button>
-          <button className="icon-button" title="Save locally" onClick={() => saveLocal(project)}><Save size={15} /></button>
-        </div>
       </div>
       <Field label="Project name" value={project.name} onChange={(name) => commit((p) => ({ ...p, name }))} />
     </div>
@@ -1025,18 +1022,14 @@ function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelec
 
 function CustomLibraryPanel({
   project,
-  commit,
   customSvgRef,
   addCustomText,
-  updateCustomTexts,
   removeCustomText,
   removeCustomSvg
 }: {
   project: Project;
-  commit: (m: (p: Project) => Project) => void;
   customSvgRef: React.RefObject<HTMLInputElement | null>;
   addCustomText: (value: string) => void;
-  updateCustomTexts: (raw: string) => void;
   removeCustomText: (index: number) => void;
   removeCustomSvg: (id: string) => void;
 }) {
@@ -1066,7 +1059,6 @@ function CustomLibraryPanel({
             <button type="button" className="tool-button" onClick={submitDraft}>Add</button>
           </div>
         </div>
-        <TextArea label="Custom words" value={custom.texts.join("\n")} onChange={updateCustomTexts} />
         <button className="tool-button w-full" onClick={() => customSvgRef.current?.click()}><Upload size={14} />Upload SVG</button>
       </div>
       <div className="overflow-auto">
