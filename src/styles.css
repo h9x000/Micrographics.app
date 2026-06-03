@@ -1,13 +1,41 @@
+@import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "@fontsource-variable/inter";
+
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
+
+@theme inline {
+  --font-sans: "Inter Variable", Inter, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "Roboto Mono", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+}
 
 :root {
   color-scheme: light;
-  font-family: Inter, "Arial Narrow", Arial, sans-serif;
+  font-family: "Inter Variable", Inter, Arial, sans-serif;
   background: #ffffff;
   color: #000000;
 }
@@ -46,7 +74,7 @@ textarea {
 }
 
 .control {
-  @apply h-9 w-full rounded-md border border-black bg-white px-3 text-sm text-black shadow-sm outline-none focus:border-black focus:ring-2 focus:ring-neutral-300;
+  @apply h-9 w-full rounded-none border border-black bg-white px-3 text-sm text-black shadow-sm outline-none focus:border-black focus:ring-2 focus:ring-neutral-300;
 }
 
 .label {
@@ -54,11 +82,11 @@ textarea {
 }
 
 .tool-button {
-  @apply inline-flex h-9 items-center justify-center gap-1 rounded-md border border-black bg-white px-3 text-xs font-semibold uppercase text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-9 items-center justify-center gap-1 rounded-none border border-black bg-white px-3 text-xs font-semibold uppercase text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .icon-button {
-  @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-black bg-white text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex h-8 w-8 items-center justify-center rounded-none border border-black bg-white text-black shadow-sm hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40;
 }
 
 .panel {
@@ -72,7 +100,7 @@ textarea {
 @layer base {
   .theme {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: "Inter Variable", Inter, Arial, sans-serif;
   }
   :root {
     --background: oklch(1 0 0);
@@ -98,7 +126,7 @@ textarea {
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
+    --radius: 0;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
     --sidebar-primary: oklch(0.205 0 0);

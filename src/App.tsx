@@ -1,5 +1,4 @@
 import {
-  AlignJustify,
   ArrowDown,
   ArrowUp,
   Copy,
@@ -727,7 +726,7 @@ function App() {
     <div className="grid h-screen grid-cols-[320px_1fr_344px] bg-white text-black" style={{ gridTemplateRows: `minmax(0, 1fr) ${bottomPanelHeight}px` }}>
       <aside className="panel row-span-2 overflow-y-auto border-r p-3">
         <Header project={project} commit={commit} undo={undo} redo={redo} canUndo={history.past.length > 0} canRedo={history.future.length > 0} />
-        <Section title="Serial Sticker">
+        <Section>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => commit((p) => regenerate(p, `${p.generator.seed}-${Date.now()}`))}><Shuffle size={14} />Generate</button>
             <button className="tool-button" onClick={() => commit(() => cleanProject(createProject("micro-001", "serial")))}><RotateCcw size={14} />Reset</button>
@@ -747,7 +746,7 @@ function App() {
           <Toggle label="Custom Text" checked={project.customLibrary.useCustomText ?? false} onChange={(useCustomText) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomText }) }))} />
           <Toggle label="Custom SVG" checked={project.customLibrary.useCustomSvg ?? false} onChange={(useCustomSvg) => commit((p) => ({ ...p, customLibrary: customLibraryFor(p, { useCustomSvg }) }))} />
         </Section>
-        <Section title="Humanize">
+        <Section>
           <Toggle label="Humanize" checked={project.humanize.enabled} onChange={(enabled) => commit((p) => ({ ...p, humanize: { ...p.humanize, enabled } }))} />
           <Field label="Humanize seed" value={project.humanize.seed} onChange={(seed) => silent((p) => ({ ...p, humanize: { ...p.humanize, seed } }))} />
           <div className="grid grid-cols-2 gap-2">
@@ -766,7 +765,7 @@ function App() {
           <button className="icon-button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.15, z - 0.1))}><ZoomOut size={15} /></button>
           <button className="icon-button" title="Zoom in" onClick={() => setZoom((z) => Math.min(3, z + 0.1))}><ZoomIn size={15} /></button>
           <button className="icon-button" title="Reset view" onClick={() => { setZoom(0.85); setPan({ x: 0, y: 0 }); }}><RotateCcw size={15} /></button>
-          <span className="rounded-md border border-black bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
+          <span className="rounded-none border border-black bg-white px-2 py-1 text-xs font-medium shadow-sm">{Math.round(zoom * 100)}%</span>
         </div>
         <div className="flex h-full items-center justify-center" style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}>
           <div className="shadow-2xl shadow-black/50" style={{ width: project.canvas.width * zoom, height: project.canvas.height * zoom }}>
@@ -776,7 +775,7 @@ function App() {
       </main>
 
       <aside className="panel row-span-2 overflow-y-auto border-l p-3">
-        <Section title="Export">
+        <Section>
           <div className="grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG</button>
             <button className="tool-button" onClick={() => svgRef.current && exportStaticSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG STATIC</button>
@@ -798,7 +797,7 @@ function App() {
           <input ref={jsonRef} className="hidden" type="file" accept="application/json" onChange={loadProjectJson} />
           <input ref={fileRef} className="hidden" type="file" accept=".ttf,.otf,.woff,.woff2" onChange={importFont} />
         </Section>
-        <Section title="Fonts">
+        <Section>
           <div className="grid grid-cols-2 gap-2">
             {fontRoles.map(({ role, label }) => (
               <button key={role} className="tool-button" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
@@ -1019,10 +1018,10 @@ function GridOverlay({ project }: { project: Project }) {
 }
 
 function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelected }: { selected?: GraphicElement; updateElement: (id: string, patch: Partial<GraphicElement>) => void; duplicateSelected: () => void; deleteSelected: () => void }) {
-  if (!selected) return <Section title="Selection"><p className="text-sm text-neutral-600">Select a layer or click an element in the preview.</p></Section>;
+  if (!selected) return <Section><p className="text-sm text-neutral-600">Select a layer or click an element in the preview.</p></Section>;
   const fontOptions = fontRoles.map(({ role, label }) => ({ label, value: fontRoleFamilies[role] }));
   return (
-    <Section title="Selected Element">
+    <Section>
       <Field label="Layer name" value={selected.name} onChange={(name) => updateElement(selected.id, { name } as Partial<GraphicElement>)} />
       {selected.kind === "text" && <TextArea label="Text" value={selected.text} onChange={(text) => updateElement(selected.id, { text } as Partial<GraphicElement>)} />}
       <div className="grid grid-cols-2 gap-2">
@@ -1107,7 +1106,7 @@ function LayerList({ project, commit, select, moveLayer }: { project: Project; c
   return (
     <div className="flex-1 overflow-auto p-2">
         {[...project.elements].reverse().map((el) => (
-          <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-md border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-black bg-neutral-100" : "border-black bg-white"}`} onClick={() => select(el.id)}>
+          <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-none border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-black bg-neutral-100" : "border-black bg-white"}`} onClick={() => select(el.id)}>
             <button className="icon-button" title="Show/hide" onClick={(event) => { event.stopPropagation(); commit((p) => resolveProjectOverlaps({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, visible: !item.visible } : item) })); }}>{el.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
             <button className="icon-button" title="Lock" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, locked: !item.locked } : item) })); }}>{el.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
             <span className="truncate">{el.name}</span>
@@ -1169,7 +1168,7 @@ function CustomLibraryPanel({
       <div className="overflow-auto">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-neutral-600"><FileText size={13} />Words</div>
         {custom.texts.length ? custom.texts.map((text, index) => (
-          <div key={`${text}-${index}`} className="mb-1 grid grid-cols-[1fr_28px] items-center gap-2 rounded-md border border-black bg-white px-2 py-1">
+          <div key={`${text}-${index}`} className="mb-1 grid grid-cols-[1fr_28px] items-center gap-2 rounded-none border border-black bg-white px-2 py-1">
             <span className="truncate">{text}</span>
             <button className="icon-button h-6 w-6" title="Remove word" onClick={() => removeCustomText(index)}><Trash2 size={12} /></button>
           </div>
@@ -1178,7 +1177,7 @@ function CustomLibraryPanel({
       <div className="overflow-auto">
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase text-neutral-600"><Upload size={13} />SVGs</div>
         {custom.svgs.length ? custom.svgs.map((asset) => (
-          <div key={asset.id} className="mb-1 grid grid-cols-[1fr_70px_28px] items-center gap-2 rounded-md border border-black bg-white px-2 py-1">
+          <div key={asset.id} className="mb-1 grid grid-cols-[1fr_70px_28px] items-center gap-2 rounded-none border border-black bg-white px-2 py-1">
             <span className="truncate">{asset.name}</span>
             <span className="text-neutral-600">{asset.viewBox.split(/\s+/).slice(2).join("x")}</span>
             <button className="icon-button h-6 w-6" title="Remove SVG" onClick={() => removeCustomSvg(asset.id)}><Trash2 size={12} /></button>
@@ -1189,8 +1188,8 @@ function CustomLibraryPanel({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="mb-4 border-b border-black pb-4"><h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase text-neutral-600"><AlignJustify size={13} />{title}</h2>{children}</section>;
+function Section({ children }: { children: React.ReactNode }) {
+  return <section className="mb-4 border-b border-black pb-4">{children}</section>;
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
