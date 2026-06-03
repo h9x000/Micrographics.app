@@ -702,7 +702,7 @@ function App() {
 
   return (
     <div className="grid h-screen grid-cols-[320px_1fr_344px] bg-white text-black" style={{ gridTemplateRows: `minmax(0, 1fr) ${bottomPanelHeight}px` }}>
-      <aside className="panel row-span-2 overflow-y-auto border-r p-3">
+      <aside className="panel row-span-2 overflow-y-auto p-3">
         <Header project={project} commit={commit} />
         <Section>
           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -761,7 +761,7 @@ function App() {
         </div>
       </main>
 
-      <aside className="panel row-span-2 overflow-y-auto border-l p-3">
+      <aside className="panel row-span-2 overflow-y-auto p-3">
         <Section>
           <div className="grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG</button>
@@ -778,9 +778,9 @@ function App() {
         <Section>
           <div className="grid gap-3">
             {fontRoles.map(({ role, label }) => (
-              <div key={role} className="grid grid-cols-[76px_1fr] items-start gap-3">
+              <div key={role} className="grid grid-cols-[48px_minmax(0,1fr)] items-start gap-3">
                 <Toggle label="Use" checked={cleanEnabledFonts(project.generator.enabledFonts).includes(role)} onChange={(enabled) => updateFontEnabled(role, enabled)} />
-                <div>
+                <div className="min-w-0">
                   <button className="tool-button w-full justify-center" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
                   <div className="mt-1 truncate text-xs text-neutral-600">{project.fonts?.[role]?.name ?? "not uploaded"}</div>
                 </div>
@@ -791,7 +791,7 @@ function App() {
         <SelectedPanel selected={selected} updateElement={updateElement} duplicateSelected={duplicateSelected} deleteSelected={deleteSelected} />
       </aside>
 
-      <section className="panel relative col-start-2 overflow-hidden border-t">
+      <section className="panel relative col-start-2 overflow-hidden">
         <div className="absolute inset-x-0 top-0 z-20 h-2 cursor-row-resize bg-black/0 hover:bg-black/20" onPointerDown={(event) => { event.preventDefault(); setPanelResize({ y: event.clientY, height: bottomPanelHeight }); }} />
         <CustomLibraryPanel
           project={project}
@@ -810,7 +810,7 @@ export default App;
 
 function Header({ project, commit }: { project: Project; commit: (m: (p: Project) => Project) => void }) {
   return (
-    <div className="mb-3 border-b border-black pb-3">
+    <div className="mb-3 pb-3">
       <div className="mb-2 flex items-center justify-between">
         <h1 className="text-lg font-black uppercase tracking-wide">Micrographics</h1>
       </div>
@@ -1085,7 +1085,7 @@ function CustomLibraryPanel({
 }
 
 function Section({ children }: { children: React.ReactNode }) {
-  return <section className="mb-4 border-b border-black pb-4">{children}</section>;
+  return <section className="mb-5 pb-1">{children}</section>;
 }
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
