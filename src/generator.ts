@@ -7,6 +7,7 @@ const red = black;
 const gray = black;
 const serialTemplate: TemplateId = "serial";
 const allFontRoles: FontRole[] = ["normal", "mono", "wide", "condensed"];
+const geistGlyphs = ["!","\"","#","$","%","&","'","(",")","*","+",",","-",".","/",":",";","<","=",">","?","@","[","\\","]","^","_","`","{","|","}","~","¡","¢","£","¤","¥","¦","§","¨","©","«","¬","®","¯","°","±","´","¶","·","¸","»","¿","×","÷","˘","˙","˚","˛","˜","˝","̀","́","̂","̃","̄","̆","̇","̈","̉","̊","̋","̌","̒","̛","̣","̦","̧","̨","̵","̶","̷","̸","฿","–","—","‘","’","‚","“","”","„","†","‡","•","…","‰","′","″","‹","›","⁄","₪","€","₱","₴","₹","₽","№","℗","™","←","↑","→","↓","↔","↕","↖","↗","↘","↙","↝","↩","↪","↰","↱","↳","↴","↵","⇤","⇥","⇧","∂","∆","∏","∑","−","√","∞","∫","∶","≈","≠","≤","≥","⌦","⌧","⌫","⏎","␋","␌","␣","─","━","│","┃","┄","┅","┆","┇","┈","┉","┊","┋","┌","┍","┎","┏","┐","┑","┒","┓","└","┕","┖","┗","┘","┙","┚","┛","├","┝","┞","┟","┠","┡","┢","┣","┤","┥","┦","┧","┨","┩","┪","┫","┬","┭","┮","┯","┰","┱","┲","┳","┴","┵","┶","┷","┸","┹","┺","┻","┼","┽","┾","┿","╀","╁","╂","╃","╄","╅","╆","╇","╈","╉","╊","╋","╌","╍","╎","╏","═","║","╒","╓","╔","╕","╖","╗","╘","╙","╚","╛","╜","╝","╞","╟","╠","╡","╢","╣","╤","╥","╦","╧","╨","╩","╪","╫","╬","╭","╮","╯","╰","╱","╲","╳","╴","╵","╶","╷","╸","╹","╺","╻","╼","╽","╾","╿","▀","▁","▂","▃","▄","▅","▆","▇","█","▉","▊","▋","▌","▍","▎","▏","▐","░","▒","▓","▔","▕","▖","▗","▘","▙","▚","▛","▜","▝","▞","▟","▲","△","▶","▷","▼","▽","◀","◁","◊","○","◌","●","☹","☺","〃","〜",""];
 
 function normalizeStrokeWidth(strokeWidth: number): number {
   return strokeWidth > 0 ? Math.max(1, Math.min(5, strokeWidth)) : 0;
@@ -285,7 +286,7 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
   const fontChoices = enabledFontRoles(settings);
   const makeSlot = (w: number, h: number, loose = false) => randomSlot(rng, canvas, w, h, occupied, loose, preventOverlap);
   const label = () => pick(rng, ["NX", "FC", "RU", "TC", "SA", "Q", "VX", "K"]);
-  const glyphs = ["⏚", "⎓", "⏻", "⌁", "⌖", "⌬", "◆", "◇", "□", "▣", "▲", "△", "●", "○", "※", "№", "Ω", "µ", "±", "↯"];
+  const glyphs = Array.from(new Set(["⏚", "⎓", "⏻", "⌁", "⌖", "⌬", "◆", "◇", "□", "▣", "▲", "△", "●", "○", "※", "№", "Ω", "µ", "±", "↯", ...geistGlyphs]));
   const textLines = [
     m.product,
     `MODEL ${m.model}`,
@@ -382,6 +383,20 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
     return el;
   };
 
+  const glyphFactory = (glyph: string) => () => {
+    const size = pick(rng, [14, 16, 18, 20, 24, 28, 32, 40, 48, 56]);
+    const rotation = pick(rng, rotations);
+    const slotSize = preventOverlap ? rotatedSlotSize(size, size, rotation) : { width: size, height: size, offsetX: 0, offsetY: 0 };
+    const slot = makeSlot(slotSize.width, slotSize.height);
+    if (!slot) return null;
+    const el = icon(rng, "glyph", `Geist glyph / ${glyph}`, slot.x + slotSize.offsetX, slot.y + slotSize.offsetY, size, glyph);
+    el.fill = palette.fg;
+    el.stroke = "none";
+    el.strokeWidth = 0;
+    el.rotation = rotation;
+    return el;
+  };
+
   const iconKinds: IconKind[] = [
     "warning",
     "lightning",
@@ -436,7 +451,8 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
     type: Array.from({ length: 28 }, (_, i) => textFactory(i)),
     nonType: [
       ...shapeKinds.flatMap((kind) => Array.from({ length: 5 }, () => shapeFactory(kind))),
-      ...iconKinds.flatMap((kind) => Array.from({ length: 3 }, () => iconFactory(kind)))
+      ...iconKinds.flatMap((kind) => Array.from({ length: 3 }, () => iconFactory(kind))),
+      ...geistGlyphs.map((glyph) => glyphFactory(glyph))
     ]
   };
 }
