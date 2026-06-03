@@ -1,12 +1,7 @@
 import {
-  ArrowDown,
-  ArrowUp,
   Copy,
   Download,
-  Eye,
-  EyeOff,
   FileText,
-  Layers,
   Lock,
   LockOpen,
   MousePointer2,
@@ -34,17 +29,17 @@ import { CustomLibrarySettings, CustomSvgAsset, CustomSvgElement, FontRole, Grap
 
 type History = { past: Project[]; present: Project; future: Project[] };
 type DragState = { id: string; x: number; y: number; startX: number; startY: number; before: Project } | null;
-type BottomPanelView = "layers" | "custom";
 type PanelResizeState = { y: number; height: number } | null;
 
 const iconKinds: IconElement["icon"][] = ["warning", "lightning", "globe", "cert", "stamp", "polarity", "bin", "doubleSquare", "arrow", "dotMark", "logo", "crosshair", "chip", "waveform", "antenna", "terminal", "chevron", "bracket", "target", "caliper", "diode", "glyph", "circuitBlock", "waveBadge", "terminalStrip", "equipmentCluster", "safetyPanel", "handlingPanel", "vehicleDotMark", "certification_marks", "regulatory_marks", "safety_pictograms", "warning_decals", "automotive_glass_markings", "recycling_disposal_marks", "handling_shipping_symbols", "technical_instruction_icons", "ansi_safety_pictograms", "iso_7010_safety_signs", "ce_mark", "fcc_mark", "rohs_mark", "weee_mark", "ul_mark", "dot_as1_mark", "e_mark_symbols", ...isoPictogramKinds];
 const shapeKinds: ShapeElement["shape"][] = ["rect", "pill", "grid", "barcode"];
 const fontRoles: Array<{ role: FontRole; label: string }> = [
-  { role: "normal", label: "Normal" },
-  { role: "mono", label: "Mono" },
-  { role: "wide", label: "Wide" },
-  { role: "condensed", label: "Condensed" }
+  { role: "normal", label: "Font 1" },
+  { role: "mono", label: "Font 2" },
+  { role: "wide", label: "Font 3" },
+  { role: "condensed", label: "Font 4" }
 ];
+const allFontRoles = fontRoles.map(({ role }) => role);
 
 function clampValue(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Number.isFinite(value) ? value : min));
@@ -52,6 +47,11 @@ function clampValue(value: number, min: number, max: number) {
 
 function normalizeStrokeWidth(strokeWidth: number): number {
   return strokeWidth > 0 ? clampValue(strokeWidth, 1, 5) : 0;
+}
+
+function cleanEnabledFonts(enabledFonts?: FontRole[]): FontRole[] {
+  const roles = (enabledFonts ?? allFontRoles).filter((role): role is FontRole => allFontRoles.includes(role));
+  return roles.length ? roles : allFontRoles;
 }
 
 function clampElement(element: GraphicElement, project: Project): GraphicElement {
@@ -251,6 +251,7 @@ function cleanProject(project: Project): Project {
       nonTypeMin: project.generator?.nonTypeMin ?? 18,
       nonTypeMax: project.generator?.nonTypeMax ?? 30,
       nonTypeStrokeWidth: normalizeStrokeWidth(project.generator?.nonTypeStrokeWidth ?? 1.5),
+      enabledFonts: cleanEnabledFonts(project.generator?.enabledFonts),
       template: "serial",
       textHighlight: project.generator?.textHighlight ?? false,
       textHighlightColor: project.generator?.textHighlightColor ?? "#000000",
@@ -274,7 +275,6 @@ function cleanProject(project: Project): Project {
       background: "#ffffff",
       exportBackground: "#ffffff",
       previewBackground: "black",
-      previewCustom: "#000000",
       width: 768,
       height: 256,
       padding: 32,
@@ -309,17 +309,13 @@ function App() {
   const [zoom, setZoom] = useState(0.85);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [pngScale, setPngScale] = useState(2);
-  const [transparentPng, setTransparentPng] = useState(false);
-  const [includeBg, setIncludeBg] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingFontRole, setPendingFontRole] = useState<FontRole>("normal");
   const [drag, setDrag] = useState<DragState>(null);
-  const [bottomPanel, setBottomPanel] = useState<BottomPanelView>("layers");
   const [bottomPanelHeight, setBottomPanelHeight] = useState(220);
   const [panelResize, setPanelResize] = useState<PanelResizeState>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const jsonRef = useRef<HTMLInputElement>(null);
   const customSvgRef = useRef<HTMLInputElement>(null);
   const project = history.present;
   const selected = project.elements.find((el) => project.selectedIds.includes(el.id));
@@ -614,16 +610,6 @@ function App() {
     });
   }
 
-  function loadProjectJson(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    file.text().then((raw) => {
-      const loaded = JSON.parse(raw) as Project;
-      setHistory({ past: [project], present: cleanProject(loaded), future: [] });
-    });
-    event.target.value = "";
-  }
-
   async function importFont(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -651,6 +637,15 @@ function App() {
     event.target.value = "";
   }
 
+  function updateFontEnabled(role: FontRole, enabled: boolean) {
+    commit((p) => {
+      const current = cleanEnabledFonts(p.generator.enabledFonts);
+      const next = enabled ? Array.from(new Set([...current, role])) : current.filter((item) => item !== role);
+      if (!next.length) return p;
+      return { ...p, generator: { ...p.generator, enabledFonts: next } };
+    });
+  }
+
   async function importCustomSvg(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
@@ -660,7 +655,6 @@ function App() {
         ...p,
         customLibrary: customLibraryFor(p, { svgs: [...(p.customLibrary?.svgs ?? []), ...assets] })
       }));
-      setBottomPanel("custom");
     }
     event.target.value = "";
   }
@@ -708,19 +702,8 @@ function App() {
     setHistory((current) => ({ ...current, past: [...current.past.slice(-49), drag.before] }));
   }
 
-  function moveLayer(id: string, dir: -1 | 1) {
-    commit((p) => {
-      const index = p.elements.findIndex((el) => el.id === id);
-      const next = index + dir;
-      if (index < 0 || next < 0 || next >= p.elements.length) return p;
-      const elements = [...p.elements];
-      [elements[index], elements[next]] = [elements[next], elements[index]];
-      return { ...p, elements };
-    });
-  }
-
   const bgClass = project.canvas.previewBackground === "checker" ? "checker" : "";
-  const previewStyle = project.canvas.previewBackground === "black" ? { background: "#000000" } : project.canvas.previewBackground === "white" ? { background: "#ffffff" } : project.canvas.previewBackground === "custom" ? { background: project.canvas.previewCustom } : undefined;
+  const previewStyle = project.canvas.previewBackground === "black" ? { background: "#000000" } : project.canvas.previewBackground === "white" ? { background: "#ffffff" } : undefined;
 
   return (
     <div className="grid h-screen grid-cols-[320px_1fr_344px] bg-white text-black" style={{ gridTemplateRows: `minmax(0, 1fr) ${bottomPanelHeight}px` }}>
@@ -779,28 +762,22 @@ function App() {
           <div className="grid grid-cols-2 gap-2">
             <button className="tool-button" onClick={() => svgRef.current && exportSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG</button>
             <button className="tool-button" onClick={() => svgRef.current && exportStaticSvg(svgRef.current, project.name || "micrographic", project)}><Download size={14} />SVG STATIC</button>
-            <button className="tool-button" onClick={() => svgRef.current && exportPng(svgRef.current, project, pngScale, transparentPng, includeBg)}><Download size={14} />PNG 300 DPI</button>
+            <button className="tool-button" onClick={() => svgRef.current && exportPng(svgRef.current, project, pngScale, true, false)}><Download size={14} />PNG 300 DPI</button>
             <button className="tool-button" onClick={() => svgRef.current && copySvg(svgRef.current, project)}><Copy size={14} />Copy SVG</button>
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Select label="PNG scale" value={String(pngScale)} onChange={(value) => setPngScale(Number(value))} options={[1, 2, 3, 4, 8].map((n) => ({ value: String(n), label: `${n}x` }))} />
-            <Select label="Preview bg" value={project.canvas.previewBackground} onChange={(previewBackground) => commit((p) => ({ ...p, canvas: { ...p.canvas, previewBackground: previewBackground as Project["canvas"]["previewBackground"] } }))} options={["checker", "black", "white", "custom"].map((value) => ({ value, label: value }))} />
+            <Select label="Preview bg" value={project.canvas.previewBackground} onChange={(previewBackground) => commit((p) => ({ ...p, canvas: { ...p.canvas, previewBackground: previewBackground as Project["canvas"]["previewBackground"] } }))} options={["black", "white", "checker"].map((value) => ({ value, label: value }))} />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <ColorField label="Preview custom" value={project.canvas.previewCustom} onChange={(previewCustom) => commit((p) => ({ ...p, canvas: { ...p.canvas, previewCustom } }))} />
-          </div>
-          <Toggle label="Transparent PNG" checked={transparentPng} onChange={setTransparentPng} />
-          <Toggle label="PNG background" checked={includeBg} onChange={setIncludeBg} />
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button className="tool-button" onClick={() => jsonRef.current?.click()}><Upload size={14} />Load JSON</button>
-          </div>
-          <input ref={jsonRef} className="hidden" type="file" accept="application/json" onChange={loadProjectJson} />
           <input ref={fileRef} className="hidden" type="file" accept=".ttf,.otf,.woff,.woff2" onChange={importFont} />
         </Section>
         <Section>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-2">
             {fontRoles.map(({ role, label }) => (
-              <button key={role} className="tool-button" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
+              <div key={role} className="grid grid-cols-[1fr_92px] items-center gap-2">
+                <button className="tool-button justify-start" onClick={() => { setPendingFontRole(role); fileRef.current?.click(); }}><Upload size={14} />{label}</button>
+                <Toggle label="Use" checked={cleanEnabledFonts(project.generator.enabledFonts).includes(role)} onChange={(enabled) => updateFontEnabled(role, enabled)} />
+              </div>
             ))}
           </div>
           <div className="mt-2 space-y-1 text-xs text-neutral-600">
@@ -812,15 +789,10 @@ function App() {
 
       <section className="panel relative col-start-2 overflow-hidden border-t">
         <div className="absolute inset-x-0 top-0 z-20 h-2 cursor-row-resize bg-black/0 hover:bg-black/20" onPointerDown={(event) => { event.preventDefault(); setPanelResize({ y: event.clientY, height: bottomPanelHeight }); }} />
-        <BottomPanel
-          active={bottomPanel}
-          setActive={setBottomPanel}
+        <CustomLibraryPanel
           project={project}
           commit={commit}
-          select={select}
-          moveLayer={moveLayer}
           customSvgRef={customSvgRef}
-          importCustomSvg={importCustomSvg}
           addCustomText={addCustomText}
           updateCustomTexts={updateCustomTexts}
           removeCustomText={removeCustomText}
@@ -1051,73 +1023,6 @@ function SelectedPanel({ selected, updateElement, duplicateSelected, deleteSelec
   );
 }
 
-function BottomPanel({
-  active,
-  setActive,
-  project,
-  commit,
-  select,
-  moveLayer,
-  customSvgRef,
-  importCustomSvg,
-  addCustomText,
-  updateCustomTexts,
-  removeCustomText,
-  removeCustomSvg
-}: {
-  active: BottomPanelView;
-  setActive: (view: BottomPanelView) => void;
-  project: Project;
-  commit: (m: (p: Project) => Project) => void;
-  select: (id: string, additive?: boolean) => void;
-  moveLayer: (id: string, dir: -1 | 1) => void;
-  customSvgRef: React.RefObject<HTMLInputElement | null>;
-  importCustomSvg: (event: ChangeEvent<HTMLInputElement>) => void;
-  addCustomText: (value: string) => void;
-  updateCustomTexts: (raw: string) => void;
-  removeCustomText: (index: number) => void;
-  removeCustomSvg: (id: string) => void;
-}) {
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-black px-3 py-2 text-xs font-semibold uppercase text-neutral-600">
-        <button className={`tool-button h-7 px-2 ${active === "layers" ? "bg-black text-white" : ""}`} onClick={() => setActive("layers")}><Layers size={13} />Layers</button>
-        <button className={`tool-button h-7 px-2 ${active === "custom" ? "bg-black text-white" : ""}`} onClick={() => setActive("custom")}><FileText size={13} />Custom</button>
-      </div>
-      {active === "layers" ? (
-        <LayerList project={project} commit={commit} select={select} moveLayer={moveLayer} />
-      ) : (
-        <CustomLibraryPanel
-          project={project}
-          commit={commit}
-          customSvgRef={customSvgRef}
-          importCustomSvg={importCustomSvg}
-          addCustomText={addCustomText}
-          updateCustomTexts={updateCustomTexts}
-          removeCustomText={removeCustomText}
-          removeCustomSvg={removeCustomSvg}
-        />
-      )}
-    </div>
-  );
-}
-
-function LayerList({ project, commit, select, moveLayer }: { project: Project; commit: (m: (p: Project) => Project) => void; select: (id: string, additive?: boolean) => void; moveLayer: (id: string, dir: -1 | 1) => void }) {
-  return (
-    <div className="flex-1 overflow-auto p-2">
-        {[...project.elements].reverse().map((el) => (
-          <div key={el.id} className={`mb-1 grid grid-cols-[28px_28px_1fr_28px_28px] items-center gap-1 rounded-none border px-1 py-1 text-xs ${project.selectedIds.includes(el.id) ? "border-black bg-neutral-100" : "border-black bg-white"}`} onClick={() => select(el.id)}>
-            <button className="icon-button" title="Show/hide" onClick={(event) => { event.stopPropagation(); commit((p) => resolveProjectOverlaps({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, visible: !item.visible } : item) })); }}>{el.visible ? <Eye size={13} /> : <EyeOff size={13} />}</button>
-            <button className="icon-button" title="Lock" onClick={(event) => { event.stopPropagation(); commit((p) => ({ ...p, elements: p.elements.map((item) => item.id === el.id ? { ...item, locked: !item.locked } : item) })); }}>{el.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
-            <span className="truncate">{el.name}</span>
-            <button className="icon-button" title="Move up" onClick={(event) => { event.stopPropagation(); moveLayer(el.id, 1); }}><ArrowUp size={13} /></button>
-            <button className="icon-button" title="Move down" onClick={(event) => { event.stopPropagation(); moveLayer(el.id, -1); }}><ArrowDown size={13} /></button>
-          </div>
-        ))}
-    </div>
-  );
-}
-
 function CustomLibraryPanel({
   project,
   commit,
@@ -1130,7 +1035,6 @@ function CustomLibraryPanel({
   project: Project;
   commit: (m: (p: Project) => Project) => void;
   customSvgRef: React.RefObject<HTMLInputElement | null>;
-  importCustomSvg: (event: ChangeEvent<HTMLInputElement>) => void;
   addCustomText: (value: string) => void;
   updateCustomTexts: (raw: string) => void;
   removeCustomText: (index: number) => void;

@@ -6,9 +6,15 @@ const black = "#111111";
 const red = black;
 const gray = black;
 const serialTemplate: TemplateId = "serial";
+const allFontRoles: FontRole[] = ["normal", "mono", "wide", "condensed"];
 
 function normalizeStrokeWidth(strokeWidth: number): number {
   return strokeWidth > 0 ? Math.max(1, Math.min(5, strokeWidth)) : 0;
+}
+
+function enabledFontRoles(settings?: Partial<Project["generator"]>): FontRole[] {
+  const roles = settings?.enabledFonts?.filter((role): role is FontRole => allFontRoles.includes(role)) ?? allFontRoles;
+  return roles.length ? roles : allFontRoles;
 }
 
 function rotationOptions(allow45Rotation = true): number[] {
@@ -27,7 +33,6 @@ function baseCanvas(width = 768, height = 512, background = white): CanvasSettin
     background,
     exportBackground: background,
     previewBackground: "black",
-    previewCustom: "#000000",
     roundedBackground: false,
     frame: false,
     gridVisible: false,
@@ -277,6 +282,7 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
   const rotations = rotationOptions(settings?.allow45Rotation ?? true);
   const nonTypeStrokeWidth = normalizeStrokeWidth(settings?.nonTypeStrokeWidth ?? 1.5);
   const preventOverlap = settings?.preventOverlap ?? false;
+  const fontChoices = enabledFontRoles(settings);
   const makeSlot = (w: number, h: number, loose = false) => randomSlot(rng, canvas, w, h, occupied, loose, preventOverlap);
   const label = () => pick(rng, ["NX", "FC", "RU", "TC", "SA", "Q", "VX", "K"]);
   const glyphs = ["⏚", "⎓", "⏻", "⌁", "⌖", "⌬", "◆", "◇", "□", "▣", "▲", "△", "●", "○", "※", "№", "Ω", "µ", "±", "↯"];
@@ -336,7 +342,7 @@ function componentLibrary(rng: Rng, canvas: CanvasSettings, seed: string, settin
     const fs = pick(rng, [8, 9, 10, 12, 14, 18, 24, 30]);
     const h = Math.max(14, Math.ceil(fs * pick(rng, [1.2, 1.6, 2.2])));
     const value = textQueue[i % textQueue.length];
-    const role = pick(rng, ["normal", "mono", "wide", "condensed"] as FontRole[]);
+    const role = pick(rng, fontChoices);
     const el = role === "mono" ? mono(rng, `Data / ${value.slice(0, 16)}`, value, 0, 0, w, h, fs, pick(rng, [500, 600, 700])) : text(rng, `Text / ${value.slice(0, 16)}`, value, 0, 0, w, h, fs, pick(rng, [600, 700, 800, 900]), role);
     el.fill = pick(rng, [palette.fg, palette.fg, palette.muted]);
     el.stroke = "none";
@@ -478,6 +484,7 @@ function mixedComposition(seed: string, project: Project): { canvas: CanvasSetti
   const svgItems = project.customLibrary?.svgs ?? [];
   const useCustomText = project.customLibrary?.useCustomText ?? project.customLibrary?.enabled ?? false;
   const useCustomSvg = project.customLibrary?.useCustomSvg ?? project.customLibrary?.enabled ?? false;
+  const fontChoices = enabledFontRoles(project.generator);
   const builtIn = componentLibrary(rng, canvas, seed, project.generator, occupied);
 
   const customTextFactory = (value: string) => () => {
@@ -487,7 +494,7 @@ function mixedComposition(seed: string, project: Project): { canvas: CanvasSetti
       text: value
     }) + 12));
     const height = Math.max(18, Math.ceil(fontSize * 1.4));
-    const element = text(rng, `Custom text / ${value.slice(0, 24)}`, value, 0, 0, width, height, fontSize, pick(rng, [600, 700, 800, 900]), pick(rng, ["normal", "mono", "wide", "condensed"] as FontRole[]));
+    const element = text(rng, `Custom text / ${value.slice(0, 24)}`, value, 0, 0, width, height, fontSize, pick(rng, [600, 700, 800, 900]), pick(rng, fontChoices));
     element.fill = black;
     element.stroke = "none";
     element.strokeWidth = 0;
@@ -573,6 +580,7 @@ export function createProject(seed = "micro-001", template: TemplateId = serialT
       nonTypeMin: 18,
       nonTypeMax: 30,
       nonTypeStrokeWidth: 1.5,
+      enabledFonts: allFontRoles,
       textHighlight: false,
       textHighlightColor: "#000000",
       allow45Rotation: true,
@@ -613,6 +621,7 @@ export function regenerate(project: Project, seed: string, template = serialTemp
     nonTypeMin: project.generator.nonTypeMin,
     nonTypeMax: project.generator.nonTypeMax,
     nonTypeStrokeWidth: project.generator.nonTypeStrokeWidth,
+    enabledFonts: enabledFontRoles(project.generator),
     textHighlight: project.generator.textHighlight,
     textHighlightColor: project.generator.textHighlightColor,
     allow45Rotation: project.generator.allow45Rotation,

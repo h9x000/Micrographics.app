@@ -91,8 +91,7 @@ export interface CanvasSettings {
   padding: number;
   background: string;
   exportBackground: string;
-  previewBackground: "black" | "white" | "checker" | "custom";
-  previewCustom: string;
+  previewBackground: "black" | "white" | "checker";
   roundedBackground: boolean;
   frame: boolean;
   gridVisible: boolean;
@@ -193,6 +192,7 @@ export interface GeneratorSettings {
   nonTypeMin: number;
   nonTypeMax: number;
   nonTypeStrokeWidth: number;
+  enabledFonts: FontRole[];
   textHighlight: boolean;
   textHighlightColor: string;
   allow45Rotation: boolean;
